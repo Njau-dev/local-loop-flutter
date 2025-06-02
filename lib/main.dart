@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:local_loop/firebase_options.dart';
+import 'package:local_loop/screens/volunteer/volunteer_events.dart';
 import 'package:provider/provider.dart';
 
 import 'services/auth_service.dart';
@@ -40,7 +41,7 @@ class MyApp extends StatelessWidget {
           secondary: Color(0xFF66BB6A),
         ),
         useMaterial3: true,
-        fontFamily: 'Roboto',
+        fontFamily: 'Poppins',
       ),
       home: AuthWrapper(),
       routes: {
@@ -51,6 +52,7 @@ class MyApp extends StatelessWidget {
         '/admin': (context) => const AdminScreen(),
         '/ngo': (context) => const NgoScreen(),
         '/volunteer': (context) => const VolunteerScreen(),
+        '/volunteer/events': (context) => const VolunteerEvents(),
       },
     );
   }
