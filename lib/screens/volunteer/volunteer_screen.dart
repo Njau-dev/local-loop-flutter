@@ -38,7 +38,7 @@ class _VolunteerScreenState extends State<VolunteerScreen> {
   Widget _buildHeroSection() {
     return Container(
       height: 320,
-      color: const Color(0xFF4CAF50),
+      color: const Color(0xFF00664F),
       child: Stack(
         children: [
           // Background image (faint, low contrast, blended)
@@ -376,10 +376,10 @@ class _VolunteerScreenState extends State<VolunteerScreen> {
         Navigator.pushNamed(context, '/volunteer/events');
         break;
       case 2:
-        Navigator.pushNamed(context, '/schedule');
+        Navigator.pushNamed(context, '/volunteer/schedule');
         break;
       case 3:
-        Navigator.pushNamed(context, '/profile');
+        Navigator.pushNamed(context, '/volunteer/profile');
         break;
     }
   }

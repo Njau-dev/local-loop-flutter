@@ -78,22 +78,6 @@ class _VolunteerEventsState extends State<VolunteerEvents> {
         children: [
           Row(
             children: [
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back_ios,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
               const Text(
                 'Volunteer Events',
                 style: TextStyle(
@@ -650,10 +634,10 @@ class _VolunteerEventsState extends State<VolunteerEvents> {
         // Already on events screen
         break;
       case 2:
-        Navigator.pushReplacementNamed(context, '/schedule');
+        Navigator.pushReplacementNamed(context, '/volunteer/schedule');
         break;
       case 3:
-        Navigator.pushReplacementNamed(context, '/profile');
+        Navigator.pushReplacementNamed(context, '/volunteer/profile');
         break;
     }
   }

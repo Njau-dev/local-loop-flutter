@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:local_loop/firebase_options.dart';
 import 'package:local_loop/screens/volunteer/volunteer_events.dart';
+import 'package:local_loop/screens/volunteer/volunteer_profile.dart';
+import 'package:local_loop/screens/volunteer/volunteer_schedule.dart';
 import 'package:provider/provider.dart';
 
 import 'services/auth_service.dart';
@@ -53,6 +55,8 @@ class MyApp extends StatelessWidget {
         '/ngo': (context) => const NgoScreen(),
         '/volunteer': (context) => const VolunteerScreen(),
         '/volunteer/events': (context) => const VolunteerEvents(),
+        '/volunteer/schedule': (context) => const VolunteerSchedule(),
+        '/volunteer/profile': (context) => const VolunteerProfile(),
       },
     );
   }
