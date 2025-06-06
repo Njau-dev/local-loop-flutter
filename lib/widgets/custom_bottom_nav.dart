@@ -57,19 +57,12 @@ class CustomBottomNav extends StatelessWidget {
       onTap: () => onTap(index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-        decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
-                  : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isSelected ? filledIcon : outlinedIcon,
-              color: isSelected ? const Color(0xFF4CAF50) : Colors.grey,
+              color: isSelected ? const Color(0xFFFF7648) : Colors.grey,
               size: 24,
             ),
             const SizedBox(height: 4),
@@ -78,7 +71,7 @@ class CustomBottomNav extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? const Color(0xFF4CAF50) : Colors.grey,
+                color: isSelected ? const Color(0xFFFF7648) : Colors.grey,
               ),
             ),
           ],

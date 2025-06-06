@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:local_loop/firebase_options.dart';
+import 'package:local_loop/screens/ngo/create_event_screen.dart';
+import 'package:local_loop/screens/ngo/event_details_screen.dart';
+import 'package:local_loop/screens/ngo/ngo_events.dart';
 import 'package:local_loop/screens/volunteer/volunteer_events.dart';
 import 'package:local_loop/screens/volunteer/volunteer_profile.dart';
 import 'package:local_loop/screens/volunteer/volunteer_schedule.dart';
+import 'package:local_loop/services/event_service.dart';
 import 'package:provider/provider.dart';
 
 import 'services/auth_service.dart';
@@ -21,8 +25,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => AuthService(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
+        Provider(create: (_) => EventService()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -57,6 +64,16 @@ class MyApp extends StatelessWidget {
         '/volunteer/events': (context) => const VolunteerEvents(),
         '/volunteer/schedule': (context) => const VolunteerSchedule(),
         '/volunteer/profile': (context) => const VolunteerProfile(),
+        '/ngo/events': (context) => const NgoEventsScreen(),
+        '/ngo/create-event': (context) => const CreateEventScreen(),
+        '/ngo/event-details': (context) {
+          final eventId = ModalRoute.of(context)?.settings.arguments as String?;
+          if (eventId == null) {
+            // navigate back
+            return const NgoEventsScreen();
+          }
+          return EventDetailsScreen(eventId: eventId);
+        },
       },
     );
   }
