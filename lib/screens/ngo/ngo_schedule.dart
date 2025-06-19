@@ -2,19 +2,21 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import '../../models/event_model.dart';
 import '../../services/event_service.dart';
 import '../../services/schedule_service.dart';
 
-class VolunteerSchedule extends StatefulWidget {
-  const VolunteerSchedule({super.key});
+class NgoSchedule extends StatefulWidget {
+  const NgoSchedule({super.key});
 
   @override
-  State<VolunteerSchedule> createState() => _VolunteerScheduleState();
+  State<NgoSchedule> createState() => _NgoScheduleState();
 }
 
-class _VolunteerScheduleState extends State<VolunteerSchedule> {
+class _NgoScheduleState extends State<NgoSchedule> {
   int _currentNavIndex = 2;
   DateTime _selectedDate = DateTime.now();
   final PageController _pageController = PageController();
@@ -25,10 +27,23 @@ class _VolunteerScheduleState extends State<VolunteerSchedule> {
   // Track events with dots
   Map<DateTime, bool> _eventDays = {};
 
+  late Stream<List<EventModel>> _eventsStream;
+
   @override
   void initState() {
     super.initState();
     _loadEventDays();
+
+    _eventsStream = FirebaseFirestore.instance
+        .collection('events')
+        .orderBy('startTime')
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => EventModel.fromFirestore(doc))
+                  .toList(),
+        );
   }
 
   @override
@@ -37,8 +52,7 @@ class _VolunteerScheduleState extends State<VolunteerSchedule> {
     super.dispose();
   }
 
-
-void _loadEventDays() {
+  void _loadEventDays() {
     final currentUserId = _auth.currentUser?.uid;
     if (currentUserId == null) return;
 
@@ -47,38 +61,28 @@ void _loadEventDays() {
     final startOfMonth = DateTime(now.year, now.month, 1);
     final endOfMonth = DateTime(now.year, now.month + 1, 0);
 
-    // Load events for the current month to mark days with dots
-    _scheduleService.getEventsForDateRange(startOfMonth, endOfMonth).listen((
-      eventsMap,
-    ) {
-      final Map<DateTime, bool> eventDays = {};
+    // Load NGO's created events for the current month
+    _eventService
+        .getNgoEventsForDateRange(currentUserId, startOfMonth, endOfMonth)
+        .listen((events) {
+          final Map<DateTime, bool> eventDays = {};
 
-      // Mark days with joined events
-      for (final event in eventsMap['joined'] ?? []) {
-        final eventDate = DateTime(
-          event.startTime.year,
-          event.startTime.month,
-          event.startTime.day,
-        );
-        eventDays[eventDate] = true;
-      }
+          // Mark days with NGO events
+          for (final event in events) {
+            final eventDate = DateTime(
+              event.startTime.year,
+              event.startTime.month,
+              event.startTime.day,
+            );
+            eventDays[eventDate] = true;
+          }
 
-      // Mark days with marked events
-      for (final event in eventsMap['marked'] ?? []) {
-        final eventDate = DateTime(
-          event.startTime.year,
-          event.startTime.month,
-          event.startTime.day,
-        );
-        eventDays[eventDate] = true;
-      }
-
-      if (mounted) {
-        setState(() {
-          _eventDays = eventDays;
+          if (mounted) {
+            setState(() {
+              _eventDays = eventDays;
+            });
+          }
         });
-      }
-    });
   }
 
   @override
@@ -90,6 +94,15 @@ void _loadEventDays() {
         elevation: 0,
         automaticallyImplyLeading: false,
         toolbarHeight: 60,
+        title: const Text(
+          'My Events Schedule',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: SafeArea(
         child: Column(
@@ -408,7 +421,7 @@ void _loadEventDays() {
                 ),
                 const SizedBox(width: 60),
                 const Text(
-                  'Event',
+                  'My Events',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -431,11 +444,11 @@ void _loadEventDays() {
     final currentUserId = _auth.currentUser?.uid;
 
     if (currentUserId == null) {
-      return _buildEmptyState('Please log in to view your schedule');
+      return _buildEmptyState('Please log in to view your events');
     }
 
-    return StreamBuilder<Map<String, List<EventModel>>>(
-      stream: _scheduleService.getEventsForDate(_selectedDate),
+    return StreamBuilder<List<EventModel>>(
+      stream: _eventService.getNgoEventsForDate(currentUserId, _selectedDate),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -449,25 +462,21 @@ void _loadEventDays() {
           );
         }
 
-        final eventsMap = snapshot.data ?? {'joined': [], 'marked': []};
-        final joinedEvents = eventsMap['joined'] ?? [];
-        final markedEvents = eventsMap['marked'] ?? [];
-        final allEvents = [...joinedEvents, ...markedEvents];
+        final events = snapshot.data ?? [];
 
-        if (allEvents.isEmpty) {
+        if (events.isEmpty) {
           return _buildEmptyState('No events scheduled for this day');
         }
 
         // Sort events by start time
-        allEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+        events.sort((a, b) => a.startTime.compareTo(b.startTime));
 
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 100),
-          itemCount: allEvents.length,
+          itemCount: events.length,
           itemBuilder: (context, index) {
-            final event = allEvents[index];
-            final isJoined = joinedEvents.contains(event);
-            return _buildEventItem(event, isJoined);
+            final event = events[index];
+            return _buildEventItem(event);
           },
         );
       },
@@ -479,11 +488,7 @@ void _loadEventDays() {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.calendar_today_outlined,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.event_note_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             message,
@@ -497,11 +502,11 @@ void _loadEventDays() {
           const SizedBox(height: 20),
           ElevatedButton.icon(
             onPressed: () {
-              Navigator.pushReplacementNamed(context, '/volunteer/events');
+              Navigator.pushReplacementNamed(context, '/ngo/events');
             },
-            icon: const Icon(Icons.explore, color: Colors.white),
+            icon: const Icon(Icons.add, color: Colors.white),
             label: const Text(
-              'Browse Events',
+              'Create Event',
               style: TextStyle(color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -517,10 +522,11 @@ void _loadEventDays() {
     );
   }
 
-  Widget _buildEventItem(EventModel event, bool isJoined) {
+  Widget _buildEventItem(EventModel event) {
     final isOngoing = _isEventOngoing(event);
     final isUpcoming = _isEventUpcoming(event);
     final isPast = _isEventPast(event);
+    final canShowQR = _canShowQRCode(event);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -604,6 +610,26 @@ void _loadEventDays() {
                                 ),
                               ),
                             ),
+                          if (canShowQR)
+                            Container(
+                              margin: const EdgeInsets.only(left: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00664F),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'QR Ready',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
                           if (isPast)
                             Icon(
                               Icons.check_circle,
@@ -611,15 +637,11 @@ void _loadEventDays() {
                               size: 20,
                             ),
                           if (isUpcoming)
-                            Icon(
-                              Icons.access_time,
-                              color: event.color,
-                              size: 20,
-                            ),
+                            Icon(Icons.schedule, color: event.color, size: 20),
                           const SizedBox(width: 8),
                           // Action menu button
                           GestureDetector(
-                            onTap: () => _showEventOptions(event, isJoined),
+                            onTap: () => _showEventOptions(event),
                             child: Icon(
                               Icons.more_vert,
                               color: Colors.grey[600],
@@ -662,27 +684,24 @@ void _loadEventDays() {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (!isJoined)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF00664F,
-                            ).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            'Marked',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: const Color(0xFF00664F),
-                              fontWeight: FontWeight.w600,
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00664F).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Organizer',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: const Color(0xFF00664F),
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -709,39 +728,38 @@ void _loadEventDays() {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundColor: event.color.withValues(alpha: 0.2),
-                        child: Text(
-                          event.organizerName.isNotEmpty
-                              ? event.organizerName[0].toUpperCase()
-                              : 'O',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: event.color,
-                          ),
-                        ),
+                      Icon(
+                        Icons.people_outline,
+                        size: 16,
+                        color: Colors.grey[500],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          event.organizerName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                      const SizedBox(width: 4),
                       Text(
-                        '${event.currentVolunteers}/${event.maxVolunteers}',
+                        'Volunteers: ${event.currentVolunteers}/${event.maxVolunteers}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey[500],
+                          color: Colors.grey[600],
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      const Spacer(),
+                      if (isPast)
+                        StreamBuilder<int>(
+                          stream: Stream.fromFuture(
+                            _eventService.getEventAttendanceCount(event.id),
+                          ),
+                          builder: (context, snapshot) {
+                            final attendanceCount = snapshot.data ?? 0;
+                            return Text(
+                              'Attended: $attendanceCount',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          },
+                        ),
                     ],
                   ),
                 ],
@@ -753,7 +771,10 @@ void _loadEventDays() {
     );
   }
 
-  void _showEventOptions(EventModel event, bool isJoined) {
+  void _showEventOptions(EventModel event) {
+    final canShowQR = _canShowQRCode(event);
+    final isPast = _isEventPast(event);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -783,142 +804,227 @@ void _loadEventDays() {
                   ),
                 ),
                 const SizedBox(height: 20),
-                if (isJoined) ...[
-                  ListTile(
-                    leading: const Icon(
-                      Icons.info_outline,
-                      color: Color(0xFF00664F),
-                    ),
-                    title: const Text('View Details'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Navigate to event details
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.exit_to_app, color: Colors.red),
-                    title: const Text('Leave Event'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _leaveEvent(event);
-                    },
-                  ),
-                ] else ...[
-                  ListTile(
-                    leading: const Icon(
-                      Icons.person_add,
-                      color: Color(0xFF00664F),
-                    ),
-                    title: const Text('Join Event'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _joinEvent(event);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.bookmark_remove,
-                      color: Colors.orange,
-                    ),
-                    title: const Text('Remove from Calendar'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _removeFromCalendar(event);
-                    },
-                  ),
-                ],
                 ListTile(
-                  leading: const Icon(Icons.share, color: Colors.blue),
-                  title: const Text('Share Event'),
+                  leading: const Icon(
+                    Icons.info_outline,
+                    color: Color(0xFF00664F),
+                  ),
+                  title: const Text('View Event Details'),
                   onTap: () {
                     Navigator.pop(context);
-                    _shareEvent(event);
+                    _viewEventDetails(event);
                   },
                 ),
+                ListTile(
+                  leading: const Icon(Icons.people, color: Color(0xFF00664F)),
+                  title: const Text('View Joined Volunteers'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _viewJoinedVolunteers(event);
+                  },
+                ),
+                if (canShowQR)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.qr_code,
+                      color: Color(0xFFFF6B35),
+                    ),
+                    title: const Text('Show Check-in QR Code'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showQRCode(event);
+                    },
+                  ),
+                if (isPast || _isEventOngoing(event))
+                  ListTile(
+                    leading: const Icon(
+                      Icons.assignment_turned_in,
+                      color: Color(0xFF00664F),
+                    ),
+                    title: const Text('View Attendance Report'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _viewAttendanceReport(event);
+                    },
+                  ),
+
+                if (!isPast)
+                  ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text('Cancel Event'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _cancelEvent(event);
+                    },
+                  ),
               ],
             ),
+          ),
+    );
+  }
+
+  void _showQRCode(EventModel event) {
+    final qrData = '${event.id}|${DateTime.now().millisecondsSinceEpoch}';
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Check-in QR Code',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    event.title,
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: QrImageView(
+                      data: qrData,
+                      version: QrVersions.auto,
+                      size: 200.0,
+                      foregroundColor: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Volunteers can scan this QR code to check in',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _shareQRCode(event, qrData),
+                          icon: const Icon(Icons.share),
+                          label: const Text('Share'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          label: const Text(
+                            'Close',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6B35),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  void _viewEventDetails(EventModel event) {
+    Navigator.pushNamed(context, '/ngo/event-details', arguments: event);
+  }
+
+  void _viewJoinedVolunteers(EventModel event) {
+    Navigator.pushNamed(context, '/ngo/joined-volunteers', arguments: event.id);
+  }
+
+  void _viewAttendanceReport(EventModel event) {
+    Navigator.pushNamed(context, '/ngo/attendance-report', arguments: event.id);
+  }
+
+  void _shareQRCode(EventModel event, String qrData) {
+    // Implement QR code sharing functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('QR Code sharing functionality coming soon'),
       ),
     );
   }
 
-  void _joinEvent(EventModel event) async {
-    final currentUserId = _auth.currentUser?.uid;
-    if (currentUserId == null) return;
-
-    try {
-      await _eventService.joinEvent(event.id, currentUserId);
-      await _scheduleService.removeFromCalendar(event.id);
-      await _scheduleService.scheduleEventNotification(event);
-      _loadEventDays(); // Refresh event days
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Joined ${event.title}')));
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to join event: $e')));
-    }
-  }
-
-  void _leaveEvent(EventModel event) async {
-    final currentUserId = _auth.currentUser?.uid;
-    if (currentUserId == null) return;
-
-    try {
-      await _eventService.leaveEvent(event.id, currentUserId);
-      _loadEventDays(); // Refresh event days
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Left ${event.title}')));
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to leave event: $e')));
-    }
-  }
-
-  void _removeFromCalendar(EventModel event) async {
-    try {
-      await _scheduleService.removeFromCalendar(event.id);
-      _loadEventDays(); // Refresh event days
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Removed ${event.title} from calendar')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to remove from calendar: $e')),
-      );
-    }
-  }
-
-  void _shareEvent(EventModel event) {
-    // Implement share functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Share functionality coming soon')),
+  void _cancelEvent(EventModel event) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Cancel Event'),
+            content: Text(
+              'Are you sure you want to cancel "${event.title}"? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Keep Event'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text(
+                  'Cancel Event',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
     );
+
+    if (confirmed == true) {
+      try {
+        await _eventService.cancelEvent(event.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Event cancelled successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error cancelling event: $e')));
+        }
+      }
+    }
+  }
+
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
   }
 
   String _getFormattedDate(DateTime date) {
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    return '${weekdays[date.weekday - 1]}\n${months[date.month - 1]} ${date.year}';
+    return '${date.day} ${_getMonthName(date.month)} ${date.year}';
   }
 
   String _getMonthYear(DateTime date) {
+    return '${_getMonthName(date.month)} ${date.year}';
+  }
+
+  String _getMonthName(int month) {
     const months = [
       'January',
       'February',
@@ -933,41 +1039,16 @@ void _loadEventDays() {
       'November',
       'December',
     ];
-    return '${months[date.month - 1]} ${date.year}';
+    return months[month - 1];
   }
 
   List<DateTime> _getWeekDays(DateTime date) {
+    final List<DateTime> weekDays = [];
     final startOfWeek = date.subtract(Duration(days: date.weekday - 1));
-    return List.generate(7, (index) => startOfWeek.add(Duration(days: index)));
-  }
-
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
-  }
-
-  bool _isEventOngoing(EventModel event) {
-    final now = DateTime.now();
-    return now.isAfter(event.startTime) && now.isBefore(event.endTime);
-  }
-
-  bool _isEventUpcoming(EventModel event) {
-    final now = DateTime.now();
-    return now.isBefore(event.startTime);
-  }
-
-  bool _isEventPast(EventModel event) {
-    final now = DateTime.now();
-    return now.isAfter(event.endTime);
-  }
-
-  String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour;
-    final minute = dateTime.minute;
-    final hourString = hour.toString().padLeft(2, '0');
-    final minuteString = minute.toString().padLeft(2, '0');
-    return '$hourString:$minuteString';
+    for (int i = 0; i < 7; i++) {
+      weekDays.add(startOfWeek.add(Duration(days: i)));
+    }
+    return weekDays;
   }
 
   void _onNavTap(int index) {
@@ -975,19 +1056,44 @@ void _loadEventDays() {
       _currentNavIndex = index;
     });
 
+    // Handle navigation
     switch (index) {
       case 0:
-        Navigator.pushReplacementNamed(context, '/volunteer');
+        Navigator.pushReplacementNamed(context, '/ngo');
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/volunteer/events');
+        Navigator.pushReplacementNamed(context, '/ngo/events');
         break;
       case 2:
         // Already on schedule screen
         break;
       case 3:
-        Navigator.pushReplacementNamed(context, '/volunteer/profile');
+        Navigator.pushReplacementNamed(context, '/ngo/profile');
         break;
     }
+  }
+
+  bool _isEventOngoing(EventModel event) {
+    final now = DateTime.now();
+    return event.startTime.isBefore(now) && event.endTime.isAfter(now);
+  }
+
+  bool _isEventUpcoming(EventModel event) {
+    final now = DateTime.now();
+    return event.startTime.isAfter(now);
+  }
+
+  bool _isEventPast(EventModel event) {
+    final now = DateTime.now();
+    return event.endTime.isBefore(now);
+  }
+
+  bool _canShowQRCode(EventModel event) {
+    final now = DateTime.now();
+    return event.startTime.isBefore(now) && event.endTime.isAfter(now);
+  }
+
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 }

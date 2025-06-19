@@ -15,7 +15,6 @@ class EventModel {
   final double locationLongitude;
   final String organizerId;
   final String organizerName;
-  final List<String> images;
   final int maxVolunteers;
   final int currentVolunteers;
   final List<String> volunteerIds;
@@ -36,7 +35,6 @@ class EventModel {
     required this.locationLongitude,
     required this.organizerId,
     required this.organizerName,
-    this.images = const [],
     this.maxVolunteers = 50,
     this.currentVolunteers = 0,
     this.volunteerIds = const [],
@@ -82,7 +80,6 @@ class EventModel {
       locationLongitude: (data['locationLongitude'] ?? 0).toDouble(),
       organizerId: data['organizerId'] ?? '',
       organizerName: data['organizerName'] ?? '',
-      images: List<String>.from(data['images'] ?? []),
       maxVolunteers: data['maxVolunteers'] ?? 50,
       currentVolunteers: data['currentVolunteers'] ?? 0,
       volunteerIds: List<String>.from(data['volunteerIds'] ?? []),
@@ -103,7 +100,6 @@ class EventModel {
       'locationLongitude': locationLongitude,
       'organizerId': organizerId,
       'organizerName': organizerName,
-      'images': images,
       'maxVolunteers': maxVolunteers,
       'currentVolunteers': currentVolunteers,
       'volunteerIds': volunteerIds,
@@ -126,7 +122,6 @@ class EventModel {
     double? locationLongitude,
     String? organizerId,
     String? organizerName,
-    List<String>? images,
     int? maxVolunteers,
     int? currentVolunteers,
     List<String>? volunteerIds,
@@ -147,7 +142,6 @@ class EventModel {
       locationLongitude: locationLongitude ?? this.locationLongitude,
       organizerId: organizerId ?? this.organizerId,
       organizerName: organizerName ?? this.organizerName,
-      images: images ?? this.images,
       maxVolunteers: maxVolunteers ?? this.maxVolunteers,
       currentVolunteers: currentVolunteers ?? this.currentVolunteers,
       volunteerIds: volunteerIds ?? this.volunteerIds,

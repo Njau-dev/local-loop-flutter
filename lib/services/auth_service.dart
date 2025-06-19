@@ -147,14 +147,27 @@ class AuthService extends ChangeNotifier {
     try {
       DocumentSnapshot doc =
           await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
+      if (doc.exists && doc.data() != null) {
         _userModel = UserModel.fromDocument(
           uid,
           doc.data() as Map<String, dynamic>,
         );
+      } else {
+        debugPrint('User document does not exist or is empty for uid: $uid');
+        _userModel = null;
       }
     } catch (e) {
-      debugPrint('Error loading user data: $e'); // Use debugPrint
+      debugPrint('Error loading user data: $e');
+      _userModel = null;
+    }
+  }
+
+  // Add a public async method to force reload user data
+  Future<void> reloadUserModel() async {
+    final user = currentUser;
+    if (user != null) {
+      await _loadUserData(user.uid);
+      notifyListeners();
     }
   }
 

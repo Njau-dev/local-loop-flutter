@@ -5,6 +5,8 @@ import 'package:local_loop/firebase_options.dart';
 import 'package:local_loop/screens/ngo/create_event_screen.dart';
 import 'package:local_loop/screens/ngo/event_details_screen.dart';
 import 'package:local_loop/screens/ngo/ngo_events.dart';
+import 'package:local_loop/screens/ngo/ngo_profile.dart';
+import 'package:local_loop/screens/ngo/ngo_schedule.dart';
 import 'package:local_loop/screens/volunteer/volunteer_events.dart';
 import 'package:local_loop/screens/volunteer/volunteer_profile.dart';
 import 'package:local_loop/screens/volunteer/volunteer_schedule.dart';
@@ -27,7 +29,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => AuthService()..initializeUser()),
         Provider(create: (_) => EventService()),
       ],
       child: const MyApp(),
@@ -65,12 +67,21 @@ class MyApp extends StatelessWidget {
         '/volunteer/schedule': (context) => const VolunteerSchedule(),
         '/volunteer/profile': (context) => const VolunteerProfile(),
         '/ngo/events': (context) => const NgoEventsScreen(),
+        '/ngo/schedule': (context) => const NgoSchedule(),
+        '/ngo/profile': (context) => const NgoProfile(),
         '/ngo/create-event': (context) => const CreateEventScreen(),
         '/ngo/event-details': (context) {
           final eventId = ModalRoute.of(context)?.settings.arguments as String?;
           if (eventId == null) {
             // navigate back
             return const NgoEventsScreen();
+          }
+          return EventDetailsScreen(eventId: eventId);
+        },
+        '/volunteer/event-details': (context) {
+          final eventId = ModalRoute.of(context)?.settings.arguments as String?;
+          if (eventId == null) {
+            return const VolunteerEvents();
           }
           return EventDetailsScreen(eventId: eventId);
         },

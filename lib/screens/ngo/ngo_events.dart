@@ -472,20 +472,6 @@ class _NgoEventsScreenState extends State<NgoEventsScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _editEvent(event),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: event.color),
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                      ),
-                      child: Text(
-                        'Edit',
-                        style: TextStyle(fontSize: 12, color: event.color),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
                     child: ElevatedButton(
                       onPressed: () => _navigateToEventDetails(event),
                       style: ElevatedButton.styleFrom(
@@ -498,6 +484,7 @@ class _NgoEventsScreenState extends State<NgoEventsScreen> {
                       ),
                     ),
                   ),
+                  // const SizedBox(width: 8),
                 ],
               ),
             ],
@@ -735,17 +722,10 @@ class _NgoEventsScreenState extends State<NgoEventsScreen> {
     Navigator.pushNamed(context, '/ngo/event-details', arguments: event.id);
   }
 
-  void _editEvent(EventModel event) {
-    Navigator.pushNamed(context, '/ngo/edit-event', arguments: event);
-  }
-
   void _handleMenuAction(String action, EventModel event) {
     switch (action) {
       case 'view':
         _navigateToEventDetails(event);
-        break;
-      case 'edit':
-        _editEvent(event);
         break;
       case 'duplicate':
         _duplicateEvent(event);

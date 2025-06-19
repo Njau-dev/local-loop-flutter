@@ -1,7 +1,12 @@
+// ignore_for_file: unused_field
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../models/event_model.dart';
-import '../../services/event_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:local_loop/models/event_model.dart';
+import 'package:local_loop/services/auth_service.dart';
+import 'package:local_loop/services/event_service.dart';
+import 'package:provider/provider.dart';
 
 class EventDetailsScreen extends StatefulWidget {
   final String eventId;
@@ -14,6 +19,8 @@ class EventDetailsScreen extends StatefulWidget {
 
 class _EventDetailsScreenState extends State<EventDetailsScreen> {
   final EventService _eventService = EventService();
+  final AuthService _authService = AuthService();
+  GoogleMapController? _mapController;
   EventModel? _event;
   bool _isLoading = true;
 
@@ -47,6 +54,40 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+    final userModel = authService.userModel;
+    final currentUserId = authService.currentUser?.uid ?? '';
+    final userRole = userModel?.role ?? 'volunteer';
+    final isNGO = userRole == 'ngo';
+    final isEventOwner = _event?.organizerId == currentUserId;
+
+    if (userModel == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // Conditionally render based on user role
+    if (userRole == 'ngo') {
+      return _buildNgoEventDetails(context, isEventOwner, isNGO, currentUserId);
+    } else if (userRole == 'volunteer') {
+      return _buildVolunteerEventDetails(
+        context,
+        isEventOwner,
+        isNGO,
+        currentUserId,
+      );
+    } else if (userRole == 'admin') {
+      return _buildAdminEventDetails(context);
+    } else {
+      return const Scaffold(body: Center(child: Text('Unknown user role.')));
+    }
+  }
+
+  Widget _buildNgoEventDetails(
+    BuildContext context,
+    bool isEventOwner,
+    bool isNGO,
+    String currentUserId,
+  ) {
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -87,7 +128,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
         slivers: [
-          _buildSliverAppBar(),
+          _buildSliverAppBar(isEventOwner, isNGO),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -104,7 +145,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   const SizedBox(height: 24),
                   _buildOrganizerInfo(),
                   const SizedBox(height: 24),
-                  _buildActionButtons(),
+                  _buildActionButtons(isEventOwner, isNGO, currentUserId),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -115,7 +156,91 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     );
   }
 
-  Widget _buildSliverAppBar() {
+  Widget _buildVolunteerEventDetails(
+    BuildContext context,
+    bool isEventOwner,
+    bool isNGO,
+    String currentUserId,
+  ) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF00664F),
+          foregroundColor: Colors.white,
+          title: const Text('Event Details'),
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(color: Color(0xFF00664F)),
+        ),
+      );
+    }
+
+    if (_event == null) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF00664F),
+          foregroundColor: Colors.white,
+          title: const Text('Event Details'),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Colors.red),
+              SizedBox(height: 16),
+              Text(
+                'Event not found',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: CustomScrollView(
+        slivers: [
+          _buildSliverAppBar(isEventOwner, isNGO),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildEventInfo(),
+                  const SizedBox(height: 24),
+                  _buildScheduleInfo(),
+                  const SizedBox(height: 24),
+                  _buildLocationInfo(),
+                  const SizedBox(height: 24),
+                  _buildVolunteerInfo(),
+                  const SizedBox(height: 24),
+                  _buildOrganizerInfo(),
+                  const SizedBox(height: 24),
+                  _buildActionButtons(isEventOwner, isNGO, currentUserId),
+                  const SizedBox(height: 100),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminEventDetails(BuildContext context) {
+    // TODO: Implement admin event details view
+    return Scaffold(
+      appBar: AppBar(title: const Text('Admin Event Details')),
+      body: const Center(
+        child: Text('Admin event details view is not yet implemented.'),
+      ),
+    );
+  }
+
+  Widget _buildSliverAppBar(bool isEventOwner, bool isNGO) {
     return SliverAppBar(
       expandedHeight: 200,
       pinned: true,
@@ -148,41 +273,43 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         ),
       ),
       actions: [
-        PopupMenuButton<String>(
-          onSelected: (value) {
-            switch (value) {
-              case 'edit':
-                _editEvent();
-                break;
-              case 'delete':
-                _showDeleteDialog();
-                break;
-            }
-          },
-          itemBuilder:
-              (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, color: Colors.grey),
-                      SizedBox(width: 8),
-                      Text('Edit Event'),
-                    ],
+        // Only show edit/delete menu for NGOs who own the event
+        if (isNGO && isEventOwner)
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'edit':
+                  _editEvent();
+                  break;
+                case 'delete':
+                  _showDeleteDialog();
+                  break;
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit, color: Colors.grey),
+                        SizedBox(width: 8),
+                        Text('Edit Event'),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete Event'),
-                    ],
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete Event'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-        ),
+                ],
+          ),
       ],
     );
   }
@@ -377,42 +504,66 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Location',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2E7D32),
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.location_on, color: Colors.red, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _event!.location,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+              const Text(
+                'Location',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2E7D32),
                 ),
               ),
+              const Spacer(),
+              const Icon(Icons.location_on, color: Colors.red, size: 20),
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                // Open maps or location
-              },
-              icon: const Icon(Icons.directions),
-              label: const Text('Get Directions'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _event!.color,
-                side: BorderSide(color: _event!.color),
+          Text(
+            _event!.location,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 16),
+          // Map container
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(
+                    _event!.locationLatitude,
+                    _event!.locationLongitude,
+                  ),
+                  zoom: 15.0,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('event_location'),
+                    position: LatLng(
+                      _event!.locationLatitude,
+                      _event!.locationLongitude,
+                    ),
+                    infoWindow: InfoWindow(
+                      title: _event!.title,
+                      snippet: _event!.location,
+                    ),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueRed,
+                    ),
+                  ),
+                },
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                },
+                mapType: MapType.normal,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
               ),
             ),
           ),
@@ -480,15 +631,13 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               color: progress >= 1.0 ? Colors.red : Colors.grey[600],
             ),
           ),
+          // Only show manage volunteers button for NGOs who own the event
           if (_event!.volunteerIds.isNotEmpty) ...[
             const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: () {
-                // Show volunteer list
-                _showVolunteerList();
-              },
+              onPressed: _manageVolunteers,
               icon: const Icon(Icons.people),
-              label: const Text('View Volunteers'),
+              label: const Text('Manage Volunteers'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _event!.color,
                 side: BorderSide(color: _event!.color),
@@ -556,40 +705,68 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     );
   }
 
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(
+    bool isEventOwner,
+    bool isNGO,
+    String currentUserId,
+  ) {
     return Column(
       children: [
-        // Primary action button (Join/Leave)
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton.icon(
-            onPressed: _event!.isActive ? _toggleVolunteerStatus : null,
-            icon: Icon(
-              _event!.volunteerIds.contains(
-                    'current_user_id',
-                  ) // Replace with actual user ID check
-                  ? Icons.check_circle
-                  : Icons.volunteer_activism,
-            ),
-            label: Text(
-              _event!.volunteerIds.contains(
-                    'current_user_id',
-                  ) // Replace with actual user ID check
-                  ? 'Leave Event'
-                  : 'Join as Volunteer',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _event!.color,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        // Primary action button - role-based rendering
+        if (!isNGO) ...[
+          // Volunteer action button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: _event!.isActive ? _toggleVolunteerStatus : null,
+              icon: Icon(
+                _event!.volunteerIds.contains(currentUserId)
+                    ? Icons.check_circle
+                    : Icons.volunteer_activism,
               ),
-              elevation: 2,
+              label: Text(
+                _event!.volunteerIds.contains(currentUserId)
+                    ? 'Leave Event'
+                    : 'Join as Volunteer',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _event!.color,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
             ),
           ),
-        ),
+        ] else if (isEventOwner) ...[
+          // NGO action button for event owners
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: _manageVolunteers,
+              icon: const Icon(Icons.group),
+              label: const Text(
+                'Manage Volunteers',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _event!.color,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         // Secondary action buttons
         Row(
@@ -631,7 +808,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
   // Helper methods
   void _editEvent() {
-    // Navigate to edit event screen
     Navigator.pushNamed(context, '/edit-event', arguments: _event!.id);
   }
 
@@ -675,7 +851,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pop(); // Go back to previous screen
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
@@ -689,83 +865,15 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
     }
   }
 
-  void _showVolunteerList() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (context) => DraggableScrollableSheet(
-            initialChildSize: 0.7,
-            maxChildSize: 0.9,
-            minChildSize: 0.5,
-            expand: false,
-            builder:
-                (context, scrollController) => Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Volunteers (${_event!.currentVolunteers})',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const Divider(),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          itemCount: _event!.volunteerIds.length,
-                          itemBuilder: (context, index) {
-                            final volunteerId = _event!.volunteerIds[index];
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: _event!.color.withValues(
-                                  alpha: 0.1,
-                                ),
-                                child: Text(
-                                  volunteerId.substring(0, 1).toUpperCase(),
-                                  style: TextStyle(
-                                    color: _event!.color,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                'Volunteer ${index + 1}',
-                              ), // Replace with actual volunteer name
-                              subtitle: Text('ID: $volunteerId'),
-                              trailing: const Icon(Icons.person),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-          ),
-    );
+  void _manageVolunteers() {
+    Navigator.pushNamed(context, '/manage-volunteers', arguments: _event!.id);
   }
 
   void _toggleVolunteerStatus() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final currentUserId = authService.currentUser?.uid ?? '';
     try {
-      const currentUserId = 'current_user_id'; // Replace with actual user ID
-
       if (_event!.volunteerIds.contains(currentUserId)) {
-        // Leave event
         await _eventService.leaveEvent(_event!.id, currentUserId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -776,7 +884,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
           );
         }
       } else {
-        // Join event
         if (_event!.currentVolunteers >= _event!.maxVolunteers) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -800,7 +907,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         }
       }
 
-      // Reload event data
       _loadEvent();
     } catch (e) {
       if (mounted) {
@@ -815,7 +921,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   }
 
   void _shareEvent() {
-    // Implement share functionality
     showDialog(
       context: context,
       builder:
@@ -829,7 +934,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   title: const Text('Copy Link'),
                   onTap: () {
                     Navigator.of(context).pop();
-                    // Copy event link to clipboard
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Link copied to clipboard')),
                     );
@@ -840,7 +944,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   title: const Text('Share via Message'),
                   onTap: () {
                     Navigator.of(context).pop();
-                    // Open messaging app
                   },
                 ),
                 ListTile(
@@ -848,7 +951,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                   title: const Text('Share via Email'),
                   onTap: () {
                     Navigator.of(context).pop();
-                    // Open email app
                   },
                 ),
               ],
@@ -858,7 +960,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   }
 
   void _addToCalendar() {
-    // Implement add to calendar functionality
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Calendar integration coming soon!'),
@@ -866,4 +967,10 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
       ),
     );
   }
+}
+
+Future<String?> getUserRole(AuthService authService) async {
+  await authService.reloadUserModel();
+  debugPrint('getUserRole() loaded: ${authService.userModel?.role}');
+  return authService.userModel?.role;
 }

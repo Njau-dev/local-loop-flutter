@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import '../models/event_model.dart';
 
 class EventService {
@@ -23,16 +24,33 @@ class EventService {
 
   // Get all active events
   Stream<List<EventModel>> getAllEvents() {
+    try {
     return _eventsCollection
         .where('isActive', isEqualTo: true)
         .orderBy('startTime', descending: false)
         .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs
-                  .map((doc) => EventModel.fromFirestore(doc))
-                  .toList(),
-        );
+          .map((snapshot) {
+            try {
+              return snapshot.docs.map((doc) {
+                try {
+                  return EventModel.fromFirestore(doc);
+                } catch (e, stackTrace) {
+                  debugPrint('Error parsing event document: $e');
+                  debugPrint(stackTrace.toString());
+                  rethrow;
+                }
+              }).toList();
+            } catch (e, stackTrace) {
+              debugPrint('Error mapping snapshot: $e');
+              debugPrint(stackTrace.toString());
+              rethrow;
+            }
+          });
+    } catch (e, stackTrace) {
+      debugPrint('Error in getAllEvents: $e');
+      debugPrint(stackTrace.toString());
+      rethrow;
+    }
   }
 
   // Get events by category
@@ -229,6 +247,47 @@ class EventService {
                   .map((doc) => EventModel.fromFirestore(doc))
                   .toList(),
         );
+  }
+
+  // Get NGO events for a date range
+  Stream<List<EventModel>> getNgoEventsForDateRange(
+    String ngoId,
+    DateTime start,
+    DateTime end,
+  ) {
+    return _eventsCollection
+        .where('organizerId', isEqualTo: ngoId)
+        .where('startTime', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('startTime', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .orderBy('startTime')
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => EventModel.fromFirestore(doc))
+                  .toList(),
+        );
+  }
+
+  // Get NGO events for a specific date
+  Stream<List<EventModel>> getNgoEventsForDate(String ngoId, DateTime date) {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    return getNgoEventsForDateRange(ngoId, start, end);
+  }
+
+  // Get event attendance count
+  Future<int> getEventAttendanceCount(String eventId) async {
+    final doc = await _eventsCollection.doc(eventId).get();
+    if (!doc.exists) return 0;
+    final data = doc.data() as Map<String, dynamic>;
+    final List volunteerIds = data['volunteerIds'] ?? [];
+    return volunteerIds.length;
+  }
+
+  // Cancel event (set isActive to false)
+  Future<void> cancelEvent(String eventId) async {
+    await _eventsCollection.doc(eventId).update({'isActive': false});
   }
 
   // Get current user ID

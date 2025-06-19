@@ -1,17 +1,16 @@
 // ignore_for_file: avoid_print
 
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:local_loop/models/event_model.dart';
+import 'package:local_loop/services/auth_service.dart';
 import 'package:local_loop/services/event_service.dart';
+import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key});
@@ -23,12 +22,14 @@ class CreateEventScreen extends StatefulWidget {
 class _CreateEventScreenState extends State<CreateEventScreen> {
   final _formKey = GlobalKey<FormState>();
   final _eventService = EventService();
+  late final AuthService _authService;
 
   // Controllers
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _maxVolunteersController = TextEditingController(text: '50');
+  final _locationAutocompleteController = TextEditingController();
 
   // Form state
   String _selectedCategory = 'community';
@@ -36,7 +37,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime _endTime = DateTime.now().add(const Duration(hours: 3));
   double _selectedLatitude = -1.2921; // Default to Nairobi
   double _selectedLongitude = 36.8219;
-  List<XFile> _selectedImages = [];
   bool _isLoading = false;
   bool _isLocationSelected = false;
 
@@ -44,9 +44,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
 
+  // Google Maps API Key - Replace with your actual key
+  static const String _googleMapsApiKey =
+      'AIzaSyDf5_sia3qxAWcuXeVHfpxa_7tWpW7zCHg';
+
   @override
   void initState() {
     super.initState();
+    _authService = Provider.of<AuthService>(context, listen: false);
     _getCurrentLocation();
   }
 
@@ -56,6 +61,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _descriptionController.dispose();
     _locationController.dispose();
     _maxVolunteersController.dispose();
+    _locationAutocompleteController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -63,8 +69,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Future<void> _getCurrentLocation() async {
     try {
       if (kIsWeb) {
-        // For web, just use default location
+        // For web, just use default location and get its address
         _updateMapLocation(_selectedLatitude, _selectedLongitude);
+        await _getLocationNameFromCoordinates(
+          _selectedLatitude,
+          _selectedLongitude,
+        );
         return;
       }
 
@@ -74,12 +84,24 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           _showSnackBar('Location permission denied');
+          // Use default location
+          _updateMapLocation(_selectedLatitude, _selectedLongitude);
+          await _getLocationNameFromCoordinates(
+            _selectedLatitude,
+            _selectedLongitude,
+          );
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
         _showSnackBar('Location permissions are permanently denied');
+        // Use default location
+        _updateMapLocation(_selectedLatitude, _selectedLongitude);
+        await _getLocationNameFromCoordinates(
+          _selectedLatitude,
+          _selectedLongitude,
+        );
         return;
       }
 
@@ -94,11 +116,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       });
 
       _updateMapLocation(_selectedLatitude, _selectedLongitude);
-      _updateLocationFromCoordinates(_selectedLatitude, _selectedLongitude);
+      await _getLocationNameFromCoordinates(
+        _selectedLatitude,
+        _selectedLongitude,
+      );
     } catch (e) {
       print('Error getting location: $e');
       _showSnackBar('Error getting current location');
       _updateMapLocation(_selectedLatitude, _selectedLongitude);
+      await _getLocationNameFromCoordinates(
+        _selectedLatitude,
+        _selectedLongitude,
+      );
     }
   }
 
@@ -118,64 +147,156 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
   }
 
-  Future<void> _updateLocationFromCoordinates(double lat, double lng) async {
+  /// Robust location name resolver using Google Maps Geocoding API
+  Future<void> _getLocationNameFromCoordinates(double lat, double lng) async {
     try {
-      // For web, just use coordinates
-      if (kIsWeb) {
-        setState(() {
-          _locationController.text =
-              'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}';
-          _isLocationSelected = true;
-        });
-        return;
-      }
+      final locationName = await _reverseGeocode(lat, lng);
 
-      List<Placemark> placemarks = await placemarkFromCoordinates(lat, lng);
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-        List<String> addressParts = [];
-
-        // Add each part only if it exists and is not empty
-        if (place.street?.isNotEmpty ?? false) addressParts.add(place.street!);
-        if (place.subLocality?.isNotEmpty ?? false)
-          addressParts.add(place.subLocality!);
-        if (place.locality?.isNotEmpty ?? false)
-          addressParts.add(place.locality!);
-        if (place.country?.isNotEmpty ?? false)
-          addressParts.add(place.country!);
-
-        final address =
-            addressParts.isNotEmpty
-                ? addressParts.join(', ')
-                : 'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}';
-
-        setState(() {
-          _locationController.text = address;
-          _isLocationSelected = true;
-          _selectedLatitude = lat;
-          _selectedLongitude = lng;
-        });
-      } else {
-        // Fallback to coordinates if no placemark found
-        setState(() {
-          _locationController.text =
-              'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}';
-          _isLocationSelected = true;
-          _selectedLatitude = lat;
-          _selectedLongitude = lng;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error getting address: $e');
-      // Always ensure we at least save the coordinates
       setState(() {
-        _locationController.text =
-            'Lat: ${lat.toStringAsFixed(4)}, Lng: ${lng.toStringAsFixed(4)}';
+        _locationController.text = locationName;
+        _isLocationSelected = true;
+        _selectedLatitude = lat;
+        _selectedLongitude = lng;
+      });
+      
+      debugPrint('Location resolved: $locationName');
+    } catch (e) {
+      debugPrint('Error resolving location: $e');
+      // Fallback to a user-friendly coordinate display
+      final locationName = await _getFallbackLocationName(lat, lng);
+      
+      setState(() {
+        _locationController.text = locationName;
         _isLocationSelected = true;
         _selectedLatitude = lat;
         _selectedLongitude = lng;
       });
     }
+  }
+
+  /// Primary method: Google Maps Reverse Geocoding API
+  Future<String> _reverseGeocode(double lat, double lng) async {
+    final url =
+        'https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$_googleMapsApiKey';
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+
+      if (data['status'] == 'OK' &&
+          data['results'] != null &&
+          data['results'].isNotEmpty) {
+        final result = data['results'][0];
+
+        // Extract meaningful location components
+        String city = '';
+        String country = '';
+        String locality = '';
+
+        for (final component in result['address_components']) {
+          final types = List<String>.from(component['types']);
+
+          if (types.contains('locality')) {
+            city = component['long_name'];
+          } else if (types.contains('administrative_area_level_1') &&
+              city.isEmpty) {
+            city = component['long_name'];
+          } else if (types.contains('administrative_area_level_2') &&
+              city.isEmpty) {
+            locality = component['long_name'];
+          } else if (types.contains('country')) {
+            country = component['long_name'];
+          }
+        }
+        
+        // Build location string priority: City, Country or Locality, Country
+        if (city.isNotEmpty && country.isNotEmpty) {
+          return '$city, $country';
+        } else if (locality.isNotEmpty && country.isNotEmpty) {
+          return '$locality, $country';
+        } else if (country.isNotEmpty) {
+          return country;
+        } else {
+          // Use the formatted address as fallback
+          return result['formatted_address'] ?? 'Unknown Location';
+        }
+      } else {
+        throw Exception('No results found: ${data['status']}');
+      }
+    } else {
+      throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+    }
+  }
+
+  /// Fallback method: Estimate location based on coordinates
+  Future<String> _getFallbackLocationName(double lat, double lng) async {
+    // Try alternative geocoding service (OpenStreetMap Nominatim) as fallback
+    try {
+      final nominatimUrl =
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&addressdetails=1';
+
+      final response = await http.get(
+        Uri.parse(nominatimUrl),
+        headers: {'User-Agent': 'LocalLoop/1.0'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['address'] != null) {
+          final address = data['address'];
+
+          String city =
+              address['city'] ??
+              address['town'] ??
+              address['village'] ??
+              address['suburb'] ??
+              address['municipality'] ??
+              '';
+
+          String country = address['country'] ?? '';
+
+          if (city.isNotEmpty && country.isNotEmpty) {
+            return '$city, $country';
+          } else if (country.isNotEmpty) {
+            return country;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Nominatim fallback failed: $e');
+    }
+
+    // Final fallback: Estimate region based on coordinates
+    return _estimateLocationFromCoordinates(lat, lng);
+  }
+
+  /// Final fallback: Basic regional estimation
+  String _estimateLocationFromCoordinates(double lat, double lng) {
+    // Kenya region check (since default is Nairobi)
+    if (lat >= -4.5 && lat <= 5.5 && lng >= 33.5 && lng <= 42.0) {
+      if (lat >= -1.5 && lat <= -1.0 && lng >= 36.5 && lng <= 37.0) {
+        return 'Nairobi, Kenya';
+      }
+      return 'Kenya';
+    }
+
+    // East Africa region
+    if (lat >= -12.0 && lat <= 18.0 && lng >= 21.0 && lng <= 52.0) {
+      return 'East Africa';
+    }
+
+    // Africa continent
+    if (lat >= -35.0 && lat <= 37.0 && lng >= -18.0 && lng <= 52.0) {
+      return 'Africa';
+    }
+
+    // Global fallback with readable coordinates
+    String latDir = lat >= 0 ? 'N' : 'S';
+    String lngDir = lng >= 0 ? 'E' : 'W';
+
+    return '${lat.abs().toStringAsFixed(2)}°$latDir, ${lng.abs().toStringAsFixed(2)}°$lngDir';
   }
 
   void _onMapTapped(LatLng position) {
@@ -185,61 +306,51 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
 
     _updateMapLocation(position.latitude, position.longitude);
-    _updateLocationFromCoordinates(position.latitude, position.longitude);
+    _getLocationNameFromCoordinates(position.latitude, position.longitude);
   }
 
-  Future<void> _pickImages() async {
+  /// Forward geocoding: Convert address text to coordinates
+  Future<void> _searchLocationByText(String searchText) async {
+    if (searchText.trim().isEmpty) return;
+    
     try {
-      final ImagePicker picker = ImagePicker();
-      final List<XFile> images = await picker.pickMultiImage();
+      final url =
+          'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(searchText)}&key=$_googleMapsApiKey';
 
-      if (images.isNotEmpty) {
-        setState(() {
-          _selectedImages.addAll(images);
-        });
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'OK' &&
+            data['results'] != null &&
+            data['results'].isNotEmpty) {
+          final result = data['results'][0];
+          final geometry = result['geometry'];
+          final location = geometry['location'];
+
+          final lat = location['lat'].toDouble();
+          final lng = location['lng'].toDouble();
+
+          setState(() {
+            _selectedLatitude = lat;
+            _selectedLongitude = lng;
+          });
+
+          _updateMapLocation(lat, lng);
+          await _getLocationNameFromCoordinates(lat, lng);
+        } else {
+          _showSnackBar(
+            'Location not found. Please try a different search term.',
+          );
+        }
+      } else {
+        _showSnackBar('Error searching location. Please try again.');
       }
     } catch (e) {
-      _showSnackBar('Error picking images: $e');
+      debugPrint('Location search error: $e');
+      _showSnackBar('Error searching location. Please check your connection.');
     }
-  }
-
-  void _removeImage(int index) {
-    setState(() {
-      _selectedImages.removeAt(index);
-    });
-  }
-
-  Future<List<String>> _uploadImages() async {
-    if (_selectedImages.isEmpty) return [];
-
-    List<String> imageUrls = [];
-
-    for (int i = 0; i < _selectedImages.length; i++) {
-      try {
-        final String fileName =
-            '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-        final Reference ref = FirebaseStorage.instance
-            .ref()
-            .child('event_images')
-            .child(fileName);
-
-        late UploadTask uploadTask;
-
-        if (kIsWeb) {
-          uploadTask = ref.putData(await _selectedImages[i].readAsBytes());
-        } else {
-          uploadTask = ref.putFile(File(_selectedImages[i].path));
-        }
-
-        final TaskSnapshot snapshot = await uploadTask;
-        final String downloadUrl = await snapshot.ref.getDownloadURL();
-        imageUrls.add(downloadUrl);
-      } catch (e) {
-        print('Error uploading image $i: $e');
-      }
-    }
-
-    return imageUrls;
   }
 
   Future<void> _selectDateTime({required bool isStartTime}) async {
@@ -249,6 +360,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
+
+    if (!mounted) return;
 
     if (pickedDate != null) {
       final TimeOfDay? pickedTime = await showTimePicker(
@@ -311,18 +424,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
 
     try {
-      // Upload images
-      final List<String> imageUrls = await _uploadImages();
-
       // Get current user
-      final User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
+      final userModel = _authService.userModel;
+      if (userModel == null) {
         throw Exception('User not authenticated');
       }
 
       // Create event model
       final EventModel event = EventModel(
-        id: '', // Will be set by Firestore
+        id: '',
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         category: _selectedCategory,
@@ -330,13 +440,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         icon: EventCategories.getCategory(_selectedCategory)['icon'],
         startTime: _startTime,
         endTime: _endTime,
-        location: _locationController.text.trim(),
+        location: _locationController.text.trim(), // Only address string
         locationLatitude: _selectedLatitude,
         locationLongitude: _selectedLongitude,
-        organizerId: currentUser.uid,
-        organizerName:
-            currentUser.displayName ?? currentUser.email ?? 'Unknown',
-        images: imageUrls,
+        organizerId: userModel.uid,
+        organizerName: userModel.username ?? userModel.email,
         maxVolunteers: int.tryParse(_maxVolunteersController.text) ?? 50,
         createdAt: DateTime.now(),
       );
@@ -356,7 +464,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _showSnackBar('Error creating event: $e');
     } finally {
       if (mounted) {
-        // Check if widget is still mounted
         setState(() {
           _isLoading = false;
         });
@@ -519,27 +626,55 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Location
+                    // Location Search
                     TextFormField(
-                      controller: _locationController,
-                      decoration: InputDecoration(
-                        labelText: 'Location *',
-                        border: const OutlineInputBorder(),
-                        suffixIcon:
-                            _isLocationSelected
-                                ? const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green,
-                                )
-                                : const Icon(Icons.location_on),
+                      controller: _locationAutocompleteController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search Location (City, Town, Country)',
+                        hintText: 'Enter location to search',
+                        prefixIcon: Icon(Icons.search),
                       ),
-                      readOnly: true,
-                      validator: (value) {
-                        if (!_isLocationSelected) {
-                          return 'Please select a location on the map';
-                        }
-                        return null;
+                      onFieldSubmitted: (value) async {
+                        await _searchLocationByText(value);
                       },
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Selected Location Display
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.grey.shade50,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            color: Color(0xFF00664F),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _locationController.text.isEmpty
+                                  ? 'No location selected'
+                                  : _locationController.text,
+                              style: TextStyle(
+                                color:
+                                    _locationController.text.isEmpty
+                                        ? Colors.grey
+                                        : Colors.black87,
+                                fontWeight:
+                                    _locationController.text.isEmpty
+                                        ? FontWeight.normal
+                                        : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 8),
 
@@ -572,109 +707,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Tap on the map to select event location',
+                      'Tap on the map to select event location or search above',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Images section
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Event Images',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: _pickImages,
-                          icon: const Icon(Icons.add_a_photo),
-                          label: const Text('Add Images'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Display selected images
-                    if (_selectedImages.isNotEmpty)
-                      Container(
-                        height: 100,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _selectedImages.length,
-                          itemBuilder: (context, index) {
-                            return Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    width: 100,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child:
-                                          kIsWeb
-                                              ? FutureBuilder<Uint8List>(
-                                                future:
-                                                    _selectedImages[index]
-                                                        .readAsBytes(),
-                                                builder: (context, snapshot) {
-                                                  if (snapshot.hasData) {
-                                                    return Image.memory(
-                                                      snapshot.data!,
-                                                      fit: BoxFit.cover,
-                                                    );
-                                                  }
-                                                  return const Center(
-                                                    child:
-                                                        CircularProgressIndicator(),
-                                                  );
-                                                },
-                                              )
-                                              : Image.file(
-                                                File(
-                                                  _selectedImages[index].path,
-                                                ),
-                                                fit: BoxFit.cover,
-                                              ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: GestureDetector(
-                                      onTap: () => _removeImage(index),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
                     const SizedBox(height: 24),
                   ],
                 ),

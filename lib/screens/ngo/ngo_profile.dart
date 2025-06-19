@@ -4,22 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import '../../widgets/custom_loading_widget.dart';
-import '../../models/volunteer_profile_model.dart';
+import '../../models/ngo_profile_model.dart';
 import '../../models/notification_model.dart';
 import '../../services/profile_service.dart';
 import '../../services/auth_service.dart';
 
-class VolunteerProfile extends StatefulWidget {
-  const VolunteerProfile({super.key});
+class NgoProfile extends StatefulWidget {
+  const NgoProfile({super.key});
 
   @override
-  State<VolunteerProfile> createState() => _VolunteerProfileState();
+  State<NgoProfile> createState() => _NgoProfileState();
 }
 
-class _VolunteerProfileState extends State<VolunteerProfile> {
+class _NgoProfileState extends State<NgoProfile> {
   int _currentNavIndex = 3;
   final ProfileService _profileService = ProfileService();
-  VolunteerProfileModel? _profile;
+  NgoProfileModel? _profile;
   bool _isLoading = true;
   String? _error;
   List<NotificationModel> _notifications = [];
@@ -38,7 +38,8 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
         _error = null;
       });
 
-      final profile = await _profileService.getVolunteerProfile();
+      final profile = await _profileService.getNgoProfile();
+      print('Loaded profile: ${profile?.toMap()}');
       setState(() {
         _profile = profile;
         _isLoading = false;
@@ -58,34 +59,26 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
       _notifications = [
         NotificationModel(
           id: '1',
-          title: 'Event Reminder',
-          message: 'Beach Cleanup starts in 2 hours',
+          title: 'New Volunteer Application',
+          message: 'Sarah Johnson applied for Beach Cleanup event',
           type: NotificationType.eventReminder,
           timestamp: DateTime.now().subtract(const Duration(hours: 1)),
           isRead: false,
         ),
         NotificationModel(
           id: '2',
-          title: 'New Badge Earned!',
-          message: 'You earned the "Environmental Hero" badge',
+          title: 'Event Fully Booked',
+          message: 'Community Garden Project has reached capacity',
           type: NotificationType.badgeEarned,
           timestamp: DateTime.now().subtract(const Duration(days: 1)),
           isRead: false,
         ),
         NotificationModel(
           id: '3',
-          title: 'Certificate Available',
-          message: 'Your volunteer certificate is ready for download',
+          title: 'Monthly Report Ready',
+          message: 'Your organization\'s impact report is available',
           type: NotificationType.certificateReady,
           timestamp: DateTime.now().subtract(const Duration(days: 2)),
-          isRead: true,
-        ),
-        NotificationModel(
-          id: '4',
-          title: 'Event Joined Successfully',
-          message: 'You have been registered for Community Garden Project',
-          type: NotificationType.eventJoined,
-          timestamp: DateTime.now().subtract(const Duration(days: 3)),
           isRead: true,
         ),
       ];
@@ -164,7 +157,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_outline, size: 64, color: Colors.grey[400]),
+            Icon(Icons.business_outlined, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               'Profile not found',
@@ -176,7 +169,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Please check your account settings',
+              'Please check your organization settings',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
@@ -195,7 +188,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
             _buildProfileHeader(),
             _buildQuickActions(),
             if (_profile!.recentActivities.isNotEmpty) _buildRecentActivity(),
-            if (_profile!.badges.isNotEmpty) _buildBadgesSection(),
+            if (_profile!.focusAreas.isNotEmpty) _buildFocusAreasSection(),
             _buildSettings(),
             const SizedBox(height: 100), // Bottom padding for nav
           ],
@@ -235,16 +228,16 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _profile!.name,
+                      _profile!.organizationName,
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _profile!.title,
+                      _profile!.organizationType,
                       style: const TextStyle(
                         fontSize: 16,
                         color: Colors.white70,
@@ -295,7 +288,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
                   child: Column(
                     children: [
                       Text(
-                        _profile!.totalHours.toString(),
+                        _profile!.activeEvents.toString(),
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -303,7 +296,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
                         ),
                       ),
                       const Text(
-                        'Hours Volunteered',
+                        'Active Events',
                         style: TextStyle(fontSize: 12, color: Colors.white70),
                       ),
                     ],
@@ -321,7 +314,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
                   child: Column(
                     children: [
                       Text(
-                        _profile!.eventsJoined.toString(),
+                        _profile!.totalVolunteers.toString(),
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -329,7 +322,7 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
                         ),
                       ),
                       const Text(
-                        'Events Joined',
+                        'Total Volunteers',
                         style: TextStyle(fontSize: 12, color: Colors.white70),
                       ),
                     ],
@@ -358,28 +351,28 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
             children: [
               Expanded(
                 child: _buildActionButton(
-                  'Find Events',
-                  Icons.search,
+                  'Create Event',
+                  Icons.add_circle_outline,
                   Colors.blue,
+                  _createEvent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildActionButton(
+                  'Manage Events',
+                  Icons.event_note,
+                  Colors.teal,
                   () => _onNavTap(1),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildActionButton(
-                  'My Schedule',
-                  Icons.calendar_today,
-                  Colors.teal,
-                  () => _onNavTap(2),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildActionButton(
-                  'Certificates',
-                  Icons.verified,
+                  'Volunteers',
+                  Icons.group,
                   Colors.orange,
-                  _viewCertificates,
+                  () => _onNavTap(2),
                 ),
               ),
             ],
@@ -506,14 +499,14 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
     );
   }
 
-  Widget _buildBadgesSection() {
+  Widget _buildFocusAreasSection() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Badges Earned',
+            'Focus Areas',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
@@ -521,8 +514,8 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
             spacing: 8,
             runSpacing: 8,
             children:
-                _profile!.badges
-                    .map((badge) => _buildBadgeItem(badge))
+                _profile!.focusAreas
+                    .map((area) => _buildFocusAreaChip(area))
                     .toList(),
           ),
         ],
@@ -530,31 +523,31 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
     );
   }
 
-  Widget _buildBadgeItem(ProfileBadge badge) {
-    return GestureDetector(
-      onTap: () => _showBadgeDetails(badge),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: badge.badgeColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: badge.badgeColor.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(badge.icon, size: 16, color: badge.badgeColor),
-            const SizedBox(width: 6),
-            Text(
-              badge.name,
-              style: TextStyle(
-                fontSize: 12,
-                color: badge.badgeColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+  Widget _buildFocusAreaChip(String area) {
+    final colors = {
+      'Education': Colors.blue,
+      'Environment': Colors.green,
+      'Healthcare': Colors.red,
+      'Community': Colors.orange,
+      'Animal Welfare': Colors.brown,
+      'Food Security': Colors.deepOrange,
+    };
+
+    final color = colors[area] ?? Colors.grey;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        area,
+        style: TextStyle(
+          fontSize: 12,
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -577,14 +570,14 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
             _manageNotifications,
           ),
           _buildSettingsItem(
-            'Privacy',
-            Icons.privacy_tip_outlined,
-            _managePrivacy,
+            'Organization Settings',
+            Icons.business_outlined,
+            _organizationSettings,
           ),
           _buildSettingsItem(
-            'Preferences',
-            Icons.settings_outlined,
-            _managePreferences,
+            'Reports & Analytics',
+            Icons.analytics_outlined,
+            _viewReports,
           ),
           _buildSettingsItem('Help & Support', Icons.help_outline, _getHelp),
           _buildSettingsItem(
@@ -836,42 +829,18 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
   void _editProfile() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Edit profile feature coming soon'),
+        content: Text('Edit organization profile coming soon'),
         backgroundColor: Color(0xFF00664F),
       ),
     );
   }
 
-  void _viewCertificates() {
+  void _createEvent() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Certificates page coming soon'),
+        content: Text('Create event feature coming soon'),
         backgroundColor: Color(0xFF00664F),
       ),
-    );
-  }
-
-  void _showBadgeDetails(ProfileBadge badge) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(badge.icon, color: badge.badgeColor),
-              const SizedBox(width: 8),
-              Text(badge.name),
-            ],
-          ),
-          content: Text(badge.description),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -893,19 +862,19 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
     );
   }
 
-  void _managePrivacy() {
+  void _organizationSettings() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Privacy settings clicked'),
+        content: Text('Organization settings clicked'),
         backgroundColor: Color(0xFF00664F),
       ),
     );
   }
 
-  void _managePreferences() {
+  void _viewReports() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Preferences settings clicked'),
+        content: Text('Reports & Analytics clicked'),
         backgroundColor: Color(0xFF00664F),
       ),
     );
@@ -944,13 +913,13 @@ class _VolunteerProfileState extends State<VolunteerProfile> {
 
     switch (index) {
       case 0:
-        Navigator.pushReplacementNamed(context, '/volunteer');
+        Navigator.pushReplacementNamed(context, '/ngo');
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/volunteer/events');
+        Navigator.pushReplacementNamed(context, '/ngo/events');
         break;
       case 2:
-        Navigator.pushReplacementNamed(context, '/volunteer/schedule');
+        Navigator.pushReplacementNamed(context, '/ngo/schedule');
         break;
       case 3:
         // Already on profile screen
