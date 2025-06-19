@@ -1,56 +1,44 @@
 class NgoProfileModel {
   final String id;
-  final String name;
-  final String organizationType;
+  final String username;
   final String location;
-  final String description;
   final int activeEvents;
   final int totalVolunteers;
-  final List<String> focusAreas;
-  final List<Map<String, dynamic>> recentActivities;
+  final List<String> focusAreas; // categories of events created
+  final List<Map<String, dynamic>> recentActivities; // events created by user
   final DateTime establishedDate;
-  final String profileImage;
 
   NgoProfileModel({
     required this.id,
-    required this.name,
-    required this.organizationType,
+    required this.username,
     required this.location,
-    required this.description,
     required this.activeEvents,
     required this.totalVolunteers,
     required this.focusAreas,
     required this.recentActivities,
     required this.establishedDate,
-    this.profileImage = '',
   });
 
   // Create copy with updated values
   NgoProfileModel copyWith({
     String? id,
-    String? name,
-    String? organizationType,
+    String? username,
     String? location,
-    String? description,
     int? activeEvents,
     int? totalVolunteers,
     List<String>? focusAreas,
     List<Map<String, dynamic>>? recentActivities,
     DateTime? establishedDate,
-    String? profileImage,
   }) {
     return NgoProfileModel(
       id: id ?? this.id,
-      name: name ?? this.name,
-      organizationType: organizationType ?? this.organizationType,
+      username: username ?? this.username,
       location: location ?? this.location,
-      description: description ?? this.description,
       activeEvents: activeEvents ?? this.activeEvents,
       totalVolunteers: totalVolunteers ?? this.totalVolunteers,
       focusAreas: focusAreas ?? this.focusAreas,
       recentActivities: recentActivities ?? this.recentActivities,
       establishedDate: establishedDate ?? this.establishedDate,
-      profileImage: profileImage ?? this.profileImage,
     );
   }
 
@@ -58,16 +46,13 @@ class NgoProfileModel {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'name': name,
-      'organizationType': organizationType,
+      'username': username,
       'location': location,
-      'description': description,
       'activeEvents': activeEvents,
       'totalVolunteers': totalVolunteers,
       'focusAreas': focusAreas,
       'recentActivities': recentActivities,
       'establishedDate': establishedDate.toIso8601String(),
-      'profileImage': profileImage,
     };
   }
 
@@ -75,10 +60,11 @@ class NgoProfileModel {
   factory NgoProfileModel.fromMap(Map<String, dynamic> map) {
     return NgoProfileModel(
       id: map['id'] ?? '',
-      name: map['name'] ?? '',
-      organizationType: map['organizationType'] ?? '',
-      location: map['location'] ?? '',
-      description: map['description'] ?? '',
+      username: map['username'] ?? '',
+      location:
+          (map['location'] == null || (map['location'] as String).isEmpty)
+              ? 'Location not provided'
+              : map['location'],
       activeEvents: map['activeEvents'] ?? 0,
       totalVolunteers: map['totalVolunteers'] ?? 0,
       focusAreas: List<String>.from(map['focusAreas'] ?? []),
@@ -89,14 +75,13 @@ class NgoProfileModel {
           map['establishedDate'] != null
               ? DateTime.parse(map['establishedDate'])
               : DateTime.now(),
-      profileImage: map['profileImage'] ?? '',
     );
   }
 
   // Get initials for profile avatar
   String get initials {
-    if (name.isEmpty) return '?';
-    final names = name.split(' ');
+    if (username.isEmpty) return '?';
+    final names = username.split(' ');
     if (names.length >= 2) {
       return '${names[0][0]}${names[1][0]}'.toUpperCase();
     } else {
@@ -104,5 +89,5 @@ class NgoProfileModel {
     }
   }
 
-  String get organizationName => name;
+  String get organizationName => username;
 }

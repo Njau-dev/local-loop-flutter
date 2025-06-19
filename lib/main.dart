@@ -11,6 +11,8 @@ import 'package:local_loop/screens/volunteer/volunteer_events.dart';
 import 'package:local_loop/screens/volunteer/volunteer_profile.dart';
 import 'package:local_loop/screens/volunteer/volunteer_schedule.dart';
 import 'package:local_loop/services/event_service.dart';
+import 'package:local_loop/services/attendance_service.dart';
+import 'package:local_loop/services/profile_service.dart';
 import 'package:provider/provider.dart';
 
 import 'services/auth_service.dart';
@@ -30,7 +32,12 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()..initializeUser()),
-        Provider(create: (_) => EventService()),
+        Provider<EventService>(create: (_) => EventService()),
+        Provider<AttendanceService>(create: (_) => AttendanceService()),
+        Provider<ProfileService>(
+          create: (_) => ProfileService(),
+        ), // <-- Add this line
+
       ],
       child: const MyApp(),
     ),

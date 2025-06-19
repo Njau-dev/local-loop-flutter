@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:local_loop/models/user_model.dart';
 import '../models/event_model.dart';
 
 class EventService {
@@ -294,4 +295,76 @@ class EventService {
   String? getCurrentUserId() {
     return _auth.currentUser?.uid;
   }
+
+  // Get joined volunteers for an event
+  Stream<List<UserModel>> getJoinedVolunteers(String eventId) {
+    return _firestore
+        .collection('events')
+        .doc(eventId)
+        .collection('joined_volunteers')
+        .snapshots()
+        .map((snapshot) async {
+          List<UserModel> volunteers = [];
+
+          for (var doc in snapshot.docs) {
+            final userId = doc.id;
+            try {
+              final userDoc =
+                  await _firestore.collection('users').doc(userId).get();
+              if (userDoc.exists) {
+                volunteers.add(
+                  UserModel.fromDocument(
+                    userDoc.id,
+                    userDoc.data() as Map<String, dynamic>,
+                  ),
+                );
+              }
+            } catch (e) {
+              print('Error fetching user $userId: $e');
+            }
+          }
+
+          return volunteers;
+        })
+        .asyncMap((future) => future);
+  }
+
+  Stream<List<EventModel>> getEventsByCreator(String creatorId) {
+    return _firestore
+        .collection('events')
+        .where('createdBy', isEqualTo: creatorId)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => EventModel.fromFirestore(doc))
+                  .toList(),
+        );
+  }
+
+  // Get all volunteers who joined an event (fetch user data for each volunteerId)
+  Future<List<UserModel>> getEventVolunteers(String eventId) async {
+    try {
+      final eventDoc = await _eventsCollection.doc(eventId).get();
+      if (!eventDoc.exists) return [];
+      final data = eventDoc.data() as Map<String, dynamic>;
+      final List<String> volunteerIds = List<String>.from(
+        data['volunteerIds'] ?? [],
+      );
+      if (volunteerIds.isEmpty) return [];
+      // Fetch user data for each volunteerId
+      final userDocs =
+          await _firestore
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: volunteerIds)
+              .get();
+      return userDocs.docs
+          .map((doc) => UserModel.fromDocument(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching event volunteers: $e');
+      return [];
+    }
+  }
+
 }

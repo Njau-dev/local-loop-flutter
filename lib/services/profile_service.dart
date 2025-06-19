@@ -18,10 +18,9 @@ class ProfileService {
   User? get currentUser => _auth.currentUser;
   String? get currentUserId => _auth.currentUser?.uid;
 
-  // Get user location
+  // Get user location (city, country) using geocoding, fallback to coordinates if not found
   Future<String> _getCurrentLocation() async {
     try {
-      // Check location permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -29,30 +28,39 @@ class ProfileService {
           return 'Location not available';
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
         return 'Location not available';
       }
-
-      // Get current position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.low,
       );
-
-      // Get address from coordinates
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
-
       if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        return '${place.locality ?? ''}, ${place.country ?? ''}';
+        final place = placemarks.first;
+        final city =
+            (place.locality != null && place.locality!.isNotEmpty)
+                ? place.locality!
+                : ((place.subAdministrativeArea != null &&
+                        place.subAdministrativeArea!.isNotEmpty)
+                    ? place.subAdministrativeArea!
+                    : '');
+        final country =
+            (place.country != null && place.country!.isNotEmpty)
+                ? place.country!
+                : '';
+        if (city.isNotEmpty && country.isNotEmpty) {
+          return '$city, $country';
+        } else if (country.isNotEmpty) {
+          return country;
+        }
       }
-
-      return 'Location not available';
+      // Fallback to coordinates if no placemark found
+      return 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
     } catch (e) {
-      print('Error getting location: $e');
+      debugPrint('Error getting location: $e');
       return 'Location not available';
     }
   }
@@ -98,14 +106,14 @@ class ProfileService {
 
       return VolunteerProfileModel(
         id: currentUserId!,
-        name: userData.username ?? userData.email.split('@')[0],
+        name: userData.username ?? 'Volunteer',
         title: _getUserTitle(userData.role),
+        email: userData.email,
         location: location,
         totalHours: totalHours,
         eventsJoined: joinedEvents.length,
         badges: badges, // Changed from skills to badges
         recentActivities: recentActivities,
-        profileImage: '', // No images as per requirement
       );
     } catch (e) {
       print('Error getting volunteer profile: $e');
@@ -241,6 +249,39 @@ class ProfileService {
     }
   }
 
+  Future<VolunteerProfileModel?> getVolunteerProfileById(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        // Try to get username, fallback to email prefix if missing
+        final name =
+            data['username'] ??
+            (data['email'] != null
+                ? (data['email'] as String).split('@')[0]
+                : 'Volunteer');
+        return VolunteerProfileModel(
+          id: userId,
+          name: name,
+          email: data['email'] ?? '',
+          title:
+              data['role'] != null
+                  ? _getUserTitle(data['role'])
+                  : 'Community Member',
+          location: data['location'] ?? '',
+          totalHours: data['totalHours'] ?? 0,
+          eventsJoined: data['eventsJoined'] ?? 0,
+          badges: [], // You can fetch badges if needed
+          recentActivities: [], // You can fetch activities if needed
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Error getting volunteer profile: $e');
+      return null;
+    }
+  }
+
   // Stream for real-time profile updates
   Stream<VolunteerProfileModel?> getVolunteerProfileStream() {
     if (currentUserId == null) {
@@ -273,10 +314,56 @@ class ProfileService {
   Future<NgoProfileModel?> getNgoProfile() async {
     try {
       if (currentUserId == null) return null;
-      final ngoDoc =
+      // Get user data
+      final userDoc =
           await _firestore.collection('users').doc(currentUserId).get();
-      if (!ngoDoc.exists) return null;
-      return NgoProfileModel.fromMap(ngoDoc.data()!..['id'] = ngoDoc.id);
+      if (!userDoc.exists) return null;
+      final userData = UserModel.fromDocument(currentUserId!, userDoc.data()!);
+      // Get all events created by this user (NGO)
+      final eventsQuery =
+          await _firestore
+              .collection('events')
+              .where('organizerId', isEqualTo: currentUserId)
+              .get();
+      final events =
+          eventsQuery.docs.map((doc) => EventModel.fromFirestore(doc)).toList();
+      // Location: get current location (city, country)
+      final location = await _getCurrentLocation();
+      // Active events: count of events that are active
+      final activeEvents = events.where((e) => e.isActive).length;
+      // Total volunteers: sum of all volunteers joined for all events
+      final totalVolunteers = events.fold<int>(
+        0,
+        (sum, e) => sum + e.currentVolunteers,
+      );
+      // Focus areas: unique categories of events created
+      final focusAreas = events.map((e) => e.category).toSet().toList();
+      // Recent activities: all events created by this user (can limit to last N if needed)
+      final recentActivities =
+          events
+              .map(
+                (e) => {
+                  'title': e.title,
+                  'category': e.category,
+                  'startTime': e.startTime.toIso8601String(),
+                  'endTime': e.endTime.toIso8601String(),
+                  'location': e.location,
+                  'isActive': e.isActive,
+                },
+              )
+              .toList();
+      // Established date: createdAt from user model
+      final establishedDate = userData.createdAt ?? DateTime.now();
+      return NgoProfileModel(
+        id: userData.uid,
+        username: userData.username ?? userData.email.split('@')[0],
+        location: location,
+        activeEvents: activeEvents,
+        totalVolunteers: totalVolunteers,
+        focusAreas: focusAreas,
+        recentActivities: recentActivities,
+        establishedDate: establishedDate,
+      );
     } catch (e) {
       print('Error getting NGO profile: $e');
       return null;

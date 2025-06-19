@@ -3,24 +3,24 @@ import 'package:flutter/material.dart';
 class VolunteerProfileModel {
   final String id;
   final String name;
+  final String email;
   final String title;
   final String location;
   final int totalHours;
   final int eventsJoined;
   final List<ProfileBadge> badges; // Changed from skills to badges
   final List<Map<String, dynamic>> recentActivities;
-  final String profileImage;
 
   VolunteerProfileModel({
     required this.id,
     required this.name,
     required this.title,
+    required this.email,
     required this.location,
     required this.totalHours,
     required this.eventsJoined,
     required this.badges,
     required this.recentActivities,
-    this.profileImage = '',
   });
 
   // Create copy with updated values
@@ -28,6 +28,7 @@ class VolunteerProfileModel {
     String? id,
     String? name,
     String? title,
+    String? email,
     String? location,
     int? totalHours,
     int? eventsJoined,
@@ -38,13 +39,13 @@ class VolunteerProfileModel {
     return VolunteerProfileModel(
       id: id ?? this.id,
       name: name ?? this.name,
+      email: email ?? this.email,
       title: title ?? this.title,
       location: location ?? this.location,
       totalHours: totalHours ?? this.totalHours,
       eventsJoined: eventsJoined ?? this.eventsJoined,
       badges: badges ?? this.badges,
       recentActivities: recentActivities ?? this.recentActivities,
-      profileImage: profileImage ?? this.profileImage,
     );
   }
 
@@ -54,12 +55,12 @@ class VolunteerProfileModel {
       'id': id,
       'name': name,
       'title': title,
+      'email': email,
       'location': location,
       'totalHours': totalHours,
       'eventsJoined': eventsJoined,
       'badges': badges.map((badge) => badge.toMap()).toList(),
       'recentActivities': recentActivities,
-      'profileImage': profileImage,
     };
   }
 
@@ -68,6 +69,7 @@ class VolunteerProfileModel {
     return VolunteerProfileModel(
       id: map['id'] ?? '',
       name: map['name'] ?? '',
+      email: map['email'] ?? '',
       title: map['title'] ?? '',
       location: map['location'] ?? '',
       totalHours: map['totalHours'] ?? 0,
@@ -80,7 +82,6 @@ class VolunteerProfileModel {
       recentActivities: List<Map<String, dynamic>>.from(
         map['recentActivities'] ?? [],
       ),
-      profileImage: map['profileImage'] ?? '',
     );
   }
 

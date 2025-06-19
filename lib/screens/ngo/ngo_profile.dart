@@ -235,14 +235,6 @@ class _NgoProfileState extends State<NgoProfile> {
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _profile!.organizationType,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -464,7 +456,7 @@ class _NgoProfileState extends State<NgoProfile> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: activity['color'].withValues(alpha: 0.1),
+              color: activity['color'],
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(activity['icon'], color: activity['color'], size: 20),
@@ -475,14 +467,14 @@ class _NgoProfileState extends State<NgoProfile> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  activity['title'],
+                  activity['title'] as String,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
-                  activity['subtitle'],
+                  activity['category'] as String,
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -491,7 +483,7 @@ class _NgoProfileState extends State<NgoProfile> {
             ),
           ),
           Text(
-            activity['time'],
+            activity['startTime'] as String,
             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
           ),
         ],

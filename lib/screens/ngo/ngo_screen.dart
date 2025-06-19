@@ -1,8 +1,13 @@
 // ignore_for_file: avoid_print, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
+import 'package:local_loop/models/volunteer_profile_model.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
+import '../../services/event_service.dart';
+import '../../models/ngo_profile_model.dart';
+import '../../models/event_model.dart';
 import '../../widgets/custom_bottom_nav.dart';
 import '../../widgets/schedule_card.dart';
 
@@ -15,6 +20,47 @@ class NgoScreen extends StatefulWidget {
 
 class _NgoScreenState extends State<NgoScreen> {
   int _currentNavIndex = 0;
+  NgoProfileModel? _ngoProfile;
+  List<EventModel> _ngoEvents = [];
+  List<String> _recentVolunteers = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNgoData();
+  }
+
+  Future<void> _loadNgoData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final profileService = Provider.of<ProfileService>(context, listen: false);
+    final eventService = Provider.of<EventService>(context, listen: false);
+    final ngoProfile = await profileService.getNgoProfile();
+    List<EventModel> ngoEvents = [];
+    List<String> recentVolunteers = [];
+    if (ngoProfile != null) {
+      // Fetch all events for this NGO
+      final eventsQuery =
+          await eventService.getEventsByOrganizer(ngoProfile.id).first;
+      ngoEvents = eventsQuery;
+      // Collect up to 5 unique volunteer IDs from all events
+      final volunteerSet = <String>{};
+      for (final event in ngoEvents) {
+        volunteerSet.addAll(event.volunteerIds);
+        if (volunteerSet.length >= 5) break;
+      }
+      recentVolunteers = volunteerSet.take(5).toList();
+    }
+    setState(() {
+      _ngoProfile = ngoProfile;
+      _ngoEvents = ngoEvents;
+      _recentVolunteers = recentVolunteers;
+      _isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,15 +131,25 @@ class _NgoScreenState extends State<NgoScreen> {
             ),
           ),
 
-          // Stats at the bottom left
+          // Stats at the bottom left (using real data)
           Positioned(
             bottom: 20,
             left: 20,
             child: Row(
               children: [
-                _buildStatCard('8', 'Active Events'),
+                _buildStatCard(
+                  _isLoading
+                      ? '-'
+                      : _ngoProfile?.activeEvents.toString() ?? '-',
+                  'Active Events',
+                ),
                 const SizedBox(width: 16),
-                _buildStatCard('142', 'Total Volunteers'),
+                _buildStatCard(
+                  _isLoading
+                      ? '-'
+                      : _ngoProfile?.totalVolunteers.toString() ?? '-',
+                  'Total Volunteers',
+                ),
               ],
             ),
           ),
@@ -308,25 +364,52 @@ class _NgoScreenState extends State<NgoScreen> {
           style: TextStyle(fontSize: 14, color: Colors.grey),
         ),
         const SizedBox(height: 16),
-        ScheduleCard(
-          title: 'Food Distribution Drive',
-          subtitle: 'Community Kitchen - Downtown',
-          time: '10:30 - 14:30',
-          room: '24 Volunteers Registered',
-          instructor: 'Sarah Johnson (Coordinator)',
-          color: const Color(0xFF4CAF50),
-        ),
-        const SizedBox(height: 12),
-        ScheduleCard(
-          title: 'Tree Planting Initiative',
-          subtitle: 'City Park Environmental Drive',
-          time: '08:00 - 12:00',
-          room: '18 Volunteers Registered',
-          instructor: 'Mike Davis (Lead Volunteer)',
-          color: const Color(0xFF2196F3),
-        ),
+        _buildActiveEventsList(),
       ],
     );
+  }
+
+  Widget _buildActiveEventsList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_ngoEvents.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        child: const Center(
+          child: Text(
+            'No active events yet. Create your first event!',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children:
+          _ngoEvents.take(3).map((event) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ScheduleCard(
+                title: event.title,
+                subtitle: event.subtitle,
+                time:
+                    '${_formatTime(event.startTime)} - ${_formatTime(event.endTime)}',
+                room: '${event.currentVolunteers} Volunteers Registered',
+                instructor:
+                    event.organizerName.isNotEmpty
+                        ? event.organizerName
+                        : 'Event Coordinator',
+                color: event.color,
+              ),
+            );
+          }).toList(),
+    );
+  }
+
+  String _formatTime(DateTime dateTime) {
+    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildVolunteerManagementSection() {
@@ -334,7 +417,7 @@ class _NgoScreenState extends State<NgoScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Recent Applications',
+          'Recent Volunteers',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -342,169 +425,65 @@ class _NgoScreenState extends State<NgoScreen> {
           ),
         ),
         const Text(
-          'Review and approve volunteer applications',
+          'Review and manage volunteer registrations',
           style: TextStyle(fontSize: 14, color: Colors.grey),
         ),
         const SizedBox(height: 16),
-        _buildVolunteerApplicationCards(),
+        _buildVolunteerCards(),
       ],
     );
   }
 
-  Widget _buildVolunteerApplicationCards() {
+  Widget _buildVolunteerCards() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_recentVolunteers.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        child: const Center(
+          child: Text(
+            'No recent volunteers',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
     return Column(
-      children: [
-        _buildVolunteerApplicationCard(
-          'Alex Thompson',
-          'Beach Cleanup Drive',
-          'Applied 2 hours ago',
-          true,
-        ),
-        const SizedBox(height: 12),
-        _buildVolunteerApplicationCard(
-          'Maria Garcia',
-          'Elder Care Visit',
-          'Applied 5 hours ago',
-          false,
-        ),
-        const SizedBox(height: 12),
-        _buildVolunteerApplicationCard(
-          'James Wilson',
-          'Food Distribution Drive',
-          'Applied 1 day ago',
-          true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVolunteerApplicationCard(
-    String name,
-    String event,
-    String time,
-    bool isNew,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFF4CAF50).withValues(alpha: 0.1),
-            child: Text(
-              name.split(' ').map((e) => e[0]).join(),
-              style: const TextStyle(
-                color: Color(0xFF4CAF50),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    if (isNew) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'NEW',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+      children:
+          _recentVolunteers
+              .map(
+                (volunteerId) => FutureBuilder<VolunteerProfileModel?>(
+                  future: Provider.of<ProfileService>(
+                    context,
+                    listen: false,
+                  ).getVolunteerProfileById(volunteerId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const ListTile(
+                        leading: CircleAvatar(child: Text('?')),
+                        title: Text('Loading...'),
+                      );
+                    }
+                    final profile = snapshot.data;
+                    if (profile == null) {
+                      return const ListTile(
+                        leading: CircleAvatar(child: Text('?')),
+                        title: Text('Unknown volunteer'),
+                      );
+                    }
+                    // Use initials as avatar, show username (name) and email
+                    return ListTile(
+                      leading: CircleAvatar(child: Text(profile.initials)),
+                      title: Text(profile.name),
+                      subtitle: Text(profile.email),
+                    );
+                  },
                 ),
-                Text(
-                  event,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  time,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  // Approve application
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$name approved for $event'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.check, size: 16, color: Colors.green),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  // Reject application
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$name rejected for $event'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.close, size: 16, color: Colors.red),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              )
+              .toList(),
     );
   }
 

@@ -1,13 +1,17 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, unused_field
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:local_loop/services/attendance_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../../widgets/custom_bottom_nav.dart';
+import '../../widgets/joined_volunteer_modal.dart';
+import '../../widgets/attendance_report_modal.dart';
 import '../../models/event_model.dart';
 import '../../services/event_service.dart';
-import '../../services/schedule_service.dart';
+import '../../services/qr_share_service.dart';
 
 class NgoSchedule extends StatefulWidget {
   const NgoSchedule({super.key});
@@ -20,31 +24,29 @@ class _NgoScheduleState extends State<NgoSchedule> {
   int _currentNavIndex = 2;
   DateTime _selectedDate = DateTime.now();
   final PageController _pageController = PageController();
-  final EventService _eventService = EventService();
-  final ScheduleService _scheduleService = ScheduleService();
+  late EventService _eventService;
+  late final String _ngoId;
+  final QRShareService _qrShareService = QRShareService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GlobalKey qrKey = GlobalKey();
+  bool _initialized = false;
 
+ 
   // Track events with dots
   Map<DateTime, bool> _eventDays = {};
 
   late Stream<List<EventModel>> _eventsStream;
 
   @override
-  void initState() {
-    super.initState();
-    _loadEventDays();
-
-    _eventsStream = FirebaseFirestore.instance
-        .collection('events')
-        .orderBy('startTime')
-        .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs
-                  .map((doc) => EventModel.fromFirestore(doc))
-                  .toList(),
-        );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _eventService = Provider.of<EventService>(context, listen: false);
+      _initialized = true;
+      _loadEventDays(); // <-- Only call this after _eventService is set!
+    }
   }
+
 
   @override
   void dispose() {
@@ -84,6 +86,23 @@ class _NgoScheduleState extends State<NgoSchedule> {
           }
         });
   }
+
+  @override
+  void initState() {
+    super.initState();
+
+    _eventsStream = FirebaseFirestore.instance
+        .collection('events')
+        .orderBy('startTime')
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => EventModel.fromFirestore(doc))
+                  .toList(),
+        );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -820,7 +839,7 @@ class _NgoScheduleState extends State<NgoSchedule> {
                   title: const Text('View Joined Volunteers'),
                   onTap: () {
                     Navigator.pop(context);
-                    _viewJoinedVolunteers(event);
+                    _showJoinedVolunteersModal(event);
                   },
                 ),
                 if (canShowQR)
@@ -844,7 +863,7 @@ class _NgoScheduleState extends State<NgoSchedule> {
                     title: const Text('View Attendance Report'),
                     onTap: () {
                       Navigator.pop(context);
-                      _viewAttendanceReport(event);
+                      _showAttendanceReportModal(event);
                     },
                   ),
 
@@ -945,25 +964,57 @@ class _NgoScheduleState extends State<NgoSchedule> {
     );
   }
 
+  // Updated method to navigate to event details
   void _viewEventDetails(EventModel event) {
-    Navigator.pushNamed(context, '/ngo/event-details', arguments: event);
+    Navigator.pushNamed(context, '/ngo/event-details', arguments: event.id);
   }
 
-  void _viewJoinedVolunteers(EventModel event) {
-    Navigator.pushNamed(context, '/ngo/joined-volunteers', arguments: event.id);
-  }
-
-  void _viewAttendanceReport(EventModel event) {
-    Navigator.pushNamed(context, '/ngo/attendance-report', arguments: event.id);
-  }
-
-  void _shareQRCode(EventModel event, String qrData) {
-    // Implement QR code sharing functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('QR Code sharing functionality coming soon'),
-      ),
+  // Updated method to show joined volunteers modal
+  void _showJoinedVolunteersModal(EventModel event) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => JoinedVolunteersModal(
+            eventId: event.id,
+            eventService: _eventService,
+          ),
     );
+  }
+
+  // Updated method to show attendance report modal
+  void _showAttendanceReportModal(EventModel event) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => AttendanceReportModal(
+            eventId: event.id,
+            eventService: _eventService,
+            attendanceService: Provider.of<AttendanceService>(
+              context,
+              listen: false,
+            ),
+          ),
+    );
+  }
+
+  // Updated QR sharing method using the service
+  void _shareQRCode(EventModel event, String qrData) async {
+    try {
+      await QRShareService.shareQRCode(context, event, qrData, qrKey);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sharing QR code: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _cancelEvent(EventModel event) async {
@@ -972,74 +1023,112 @@ class _NgoScheduleState extends State<NgoSchedule> {
       builder:
           (context) => AlertDialog(
             title: const Text('Cancel Event'),
-            content: Text(
-              'Are you sure you want to cancel "${event.title}"? This action cannot be undone.',
-            ),
+            content: const Text('Are you sure you want to cancel this event?'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep Event'),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('No'),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text(
-                  'Cancel Event',
-                  style: TextStyle(color: Colors.white),
-                ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop(true);
+                  try {
+                    await _eventService.cancelEvent(event.id);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Event cancelled successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error cancelling event: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Yes'),
               ),
             ],
           ),
     );
 
     if (confirmed == true) {
-      try {
-        await _eventService.cancelEvent(event.id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Event cancelled successfully')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error cancelling event: $e')));
-        }
-      }
+      // Optionally, you can perform additional actions after event cancellation
     }
   }
 
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
+  void _onNavTap(int index) {
+    setState(() {
+      _currentNavIndex = index;
+    });
+
+    // Handle navigation based on the tapped index
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, '/ngo/home');
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, '/ngo/volunteers');
+        break;
+      case 2:
+        // Already on the schedule screen
+        break;
+      case 3:
+        Navigator.pushReplacementNamed(context, '/ngo/profile');
+        break;
+    }
   }
 
   String _getFormattedDate(DateTime date) {
-    return '${date.day} ${_getMonthName(date.month)} ${date.year}';
+    // Format the date as "EEE, MMM d"
+    return "${_getAbbreviatedWeekday(date.weekday)}, ${_getAbbreviatedMonth(date.month)} ${date.day}";
   }
 
   String _getMonthYear(DateTime date) {
-    return '${_getMonthName(date.month)} ${date.year}';
+    // Format the date as "Month Year", e.g., "June 2024"
+    const months = [
+      "",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return "${months[date.month]} ${date.year}";
   }
 
-  String _getMonthName(int month) {
+  String _getAbbreviatedWeekday(int weekday) {
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return weekdays[weekday - 1];
+  }
+
+  String _getAbbreviatedMonth(int month) {
     const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
+      "",
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
     ];
-    return months[month - 1];
+    return months[month];
   }
 
   List<DateTime> _getWeekDays(DateTime date) {
@@ -1051,26 +1140,10 @@ class _NgoScheduleState extends State<NgoSchedule> {
     return weekDays;
   }
 
-  void _onNavTap(int index) {
-    setState(() {
-      _currentNavIndex = index;
-    });
-
-    // Handle navigation
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/ngo');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/ngo/events');
-        break;
-      case 2:
-        // Already on schedule screen
-        break;
-      case 3:
-        Navigator.pushReplacementNamed(context, '/ngo/profile');
-        break;
-    }
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
   }
 
   bool _isEventOngoing(EventModel event) {
@@ -1094,6 +1167,6 @@ class _NgoScheduleState extends State<NgoSchedule> {
   }
 
   String _formatTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
   }
 }
