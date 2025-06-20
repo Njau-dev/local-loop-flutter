@@ -92,8 +92,12 @@ class _NgoProfileState extends State<NgoProfile> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF00664F),
         elevation: 0,
-        toolbarHeight: 60,
+        centerTitle: true,
         automaticallyImplyLeading: false,
+        title: Text(
+          'My Organization Profile',
+          style: const TextStyle(fontSize: 18, color: Colors.white),
+        ),
       ),
       body: SafeArea(
         top: false,
@@ -492,25 +496,33 @@ class _NgoProfileState extends State<NgoProfile> {
   }
 
   Widget _buildFocusAreasSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          const Text(
-            'Focus Areas',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            children: [
+              const Text(
+                'Focus Areas',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children:
+                      _profile!.focusAreas
+                          .map((area) => _buildFocusAreaChip(area))
+                          .toList(),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children:
-                _profile!.focusAreas
-                    .map((area) => _buildFocusAreaChip(area))
-                    .toList(),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

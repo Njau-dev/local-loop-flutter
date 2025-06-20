@@ -38,6 +38,17 @@ class _NgoEventsScreenState extends State<NgoEventsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF00664F),
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 60,
+        title: const Text(
+          'Organization Events',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        centerTitle: true,
+      ),
       backgroundColor: Colors.grey[50],
       body: SafeArea(
         child: Column(
@@ -547,7 +558,6 @@ class _NgoEventsScreenState extends State<NgoEventsScreen> {
               const SizedBox(height: 4),
               Text(event.subtitle),
               const SizedBox(height: 8),
-
               // Progress
               Row(
                 children: [

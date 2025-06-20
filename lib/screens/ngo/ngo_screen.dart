@@ -65,6 +65,12 @@ class _NgoScreenState extends State<NgoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF00664F),
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 60,
+      ),
       backgroundColor: Colors.grey[50],
       body: _buildMainContent(),
       bottomNavigationBar: CustomBottomNav(

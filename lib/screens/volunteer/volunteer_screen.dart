@@ -391,14 +391,25 @@ class _VolunteerScreenState extends State<VolunteerScreen> {
             : Column(
               children:
                   _commitments
+                      .asMap()
+                      .entries
                       .map(
-                        (s) => ScheduleCard(
-                          title: s.title,
-                          subtitle: s.subtitle,
-                          time: s.startTime + ' - ' + s.endTime,
-                          room: s.location,
-                          instructor: s.organizer,
-                          color: s.color,
+                        (entry) => Padding(
+                          padding: EdgeInsets.only(
+                            bottom:
+                                entry.key == _commitments.length - 1 ? 0 : 16,
+                          ),
+                          child: ScheduleCard(
+                            title: entry.value.title,
+                            subtitle: entry.value.subtitle,
+                            time:
+                                entry.value.startTime +
+                                ' - ' +
+                                entry.value.endTime,
+                            room: entry.value.location,
+                            instructor: entry.value.organizer,
+                            color: entry.value.color,
+                          ),
                         ),
                       )
                       .toList(),

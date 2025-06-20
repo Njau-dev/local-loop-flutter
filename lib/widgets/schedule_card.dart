@@ -7,6 +7,8 @@ class ScheduleCard extends StatelessWidget {
   final String room;
   final String instructor;
   final Color color;
+  final bool isMarked; // NEW: is this event marked in calendar?
+  final VoidCallback? onAddToCalendar; // NEW: callback for add to calendar
 
   const ScheduleCard({
     super.key,
@@ -16,6 +18,8 @@ class ScheduleCard extends StatelessWidget {
     required this.room,
     required this.instructor,
     required this.color,
+    this.isMarked = false,
+    this.onAddToCalendar,
   });
 
   @override
@@ -26,7 +30,7 @@ class ScheduleCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.3),
+            color: color.withOpacity(0.3),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -52,7 +56,7 @@ class ScheduleCard extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
+                      color: Colors.white.withOpacity(0.8),
                       fontSize: 14,
                     ),
                   ),
@@ -61,14 +65,14 @@ class ScheduleCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.access_time,
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: Colors.white.withOpacity(0.8),
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         time,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           fontSize: 12,
                         ),
                       ),
@@ -79,14 +83,14 @@ class ScheduleCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.location_on,
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: Colors.white.withOpacity(0.8),
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         room,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           fontSize: 12,
                         ),
                       ),
@@ -97,14 +101,14 @@ class ScheduleCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.person,
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: Colors.white.withOpacity(0.8),
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         instructor,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           fontSize: 12,
                         ),
                       ),
@@ -113,11 +117,24 @@ class ScheduleCard extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              onPressed: () {
-                // Handle more options
-              },
-              icon: const Icon(Icons.more_vert, color: Colors.white),
+            Column(
+              children: [
+                if (onAddToCalendar != null)
+                  IconButton(
+                    onPressed: isMarked ? null : onAddToCalendar,
+                    icon: Icon(
+                      isMarked ? Icons.event_available : Icons.event,
+                      color: isMarked ? Colors.greenAccent : Colors.white,
+                    ),
+                    tooltip: isMarked ? 'Added to Calendar' : 'Add to Calendar',
+                  ),
+                IconButton(
+                  onPressed: () {
+                    // Handle more options
+                  },
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                ),
+              ],
             ),
           ],
         ),

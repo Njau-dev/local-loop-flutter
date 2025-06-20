@@ -792,7 +792,11 @@ void _loadEventDays() {
                     title: const Text('View Details'),
                     onTap: () {
                       Navigator.pop(context);
-                      // Navigate to event details
+                      Navigator.pushNamed(
+                        context,
+                        '/volunteer/event-details',
+                        arguments: event.id,
+                      );
                     },
                   ),
                   ListTile(

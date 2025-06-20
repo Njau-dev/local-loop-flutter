@@ -6,7 +6,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:local_loop/models/event_model.dart';
 import 'package:local_loop/services/auth_service.dart';
 import 'package:local_loop/services/event_service.dart';
+import 'package:local_loop/services/schedule_service.dart';
 import 'package:provider/provider.dart';
+import '../../widgets/joined_volunteer_modal.dart';
 
 class EventDetailsScreen extends StatefulWidget {
   final String eventId;
@@ -23,11 +25,21 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
   GoogleMapController? _mapController;
   EventModel? _event;
   bool _isLoading = true;
+  bool _isMarked = false;
+  final ScheduleService _scheduleService = ScheduleService();
 
   @override
   void initState() {
     super.initState();
     _loadEvent();
+    _checkIfMarked();
+  }
+
+  void _checkIfMarked() async {
+    final marked = await _scheduleService.isEventMarked(widget.eventId);
+    setState(() {
+      _isMarked = marked;
+    });
   }
 
   Future<void> _loadEvent() async {
@@ -631,19 +643,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               color: progress >= 1.0 ? Colors.red : Colors.grey[600],
             ),
           ),
-          // Only show manage volunteers button for NGOs who own the event
-          if (_event!.volunteerIds.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _manageVolunteers,
-              icon: const Icon(Icons.people),
-              label: const Text('Manage Volunteers'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _event!.color,
-                side: BorderSide(color: _event!.color),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -744,13 +743,24 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               ),
             ),
           ),
-        ] else if (isEventOwner) ...[
-          // NGO action button for event owners
+        ] else if (isEventOwner && isNGO) ...[
+          // NGO action button for event owners only (not visible to volunteers)
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: _manageVolunteers,
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder:
+                      (context) => JoinedVolunteersModal(
+                        eventId: _event!.id,
+                        eventService: _eventService,
+                      ),
+                );
+              },
               icon: const Icon(Icons.group),
               label: const Text(
                 'Manage Volunteers',
@@ -788,9 +798,37 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _addToCalendar,
-                icon: const Icon(Icons.calendar_month),
-                label: const Text('Add to Calendar'),
+                icon: Icon(_isMarked ? Icons.event_available : Icons.event),
+                label: Text(
+                  _isMarked ? 'Added to Calendar' : 'Add to Calendar',
+                ),
+                onPressed:
+                    _isMarked || _isLoading
+                        ? null
+                        : () async {
+                          setState(() => _isLoading = true);
+                          try {
+                            await _scheduleService.addToCalendar(
+                              widget.eventId,
+                            );
+                            setState(() {
+                              _isMarked = true;
+                              _isLoading = false;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Event added to your calendar!'),
+                              ),
+                            );
+                          } catch (e) {
+                            setState(() => _isLoading = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to add event: $e'),
+                              ),
+                            );
+                          }
+                        },
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _event!.color,
                   side: BorderSide(color: _event!.color),
@@ -863,10 +901,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         );
       }
     }
-  }
-
-  void _manageVolunteers() {
-    Navigator.pushNamed(context, '/manage-volunteers', arguments: _event!.id);
   }
 
   void _toggleVolunteerStatus() async {
@@ -956,15 +990,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               ],
             ),
           ),
-    );
-  }
-
-  void _addToCalendar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Calendar integration coming soon!'),
-        backgroundColor: Colors.blue,
-      ),
     );
   }
 }
