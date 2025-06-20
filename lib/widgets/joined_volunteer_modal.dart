@@ -182,7 +182,7 @@ class JoinedVolunteersModal extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00664F).withOpacity(0.1),
+                    color: const Color(0xFF00664F).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(

@@ -50,6 +50,9 @@ dependencies:
   http: ^1.4.0
   path_provider: ^2.1.5
   share_plus: ^11.0.0
+  qr_code_scanner: ^1.0.1
+  qr_code_tools: ^0.2.0
+  build_runner: ^2.5.2
 
 dev_dependencies:
   flutter_test:

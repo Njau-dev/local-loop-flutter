@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'dart:html' as html;
 import '../models/event_model.dart';
 
 class QRShareService {
@@ -15,16 +17,32 @@ class QRShareService {
     GlobalKey qrKey,
   ) async {
     try {
-      // Capture QR code as image
       final boundary =
           qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
         throw Exception('Could not capture QR code');
       }
-
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData!.buffer.asUint8List();
+
+      if (kIsWeb) {
+        // Web: create a blob and trigger download
+        final blob = html.Blob([pngBytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor =
+            html.AnchorElement(href: url)
+              ..download = 'qr_code_${event.id}.png'
+              ..style.display = 'none';
+        html.document.body!.children.add(anchor);
+        anchor.click();
+        html.document.body!.children.remove(anchor);
+        html.Url.revokeObjectUrl(url);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('QR code downloaded!')));
+        return;
+      }
 
       // Save to temporary directory
       final tempDir = await getTemporaryDirectory();
@@ -35,15 +53,15 @@ class QRShareService {
       await Share.shareXFiles(
         [XFile(file.path)],
         text: '''
-🎉 Event Check-in QR Code
+          🎉 Event Check-in QR Code
 
-📅 Event: ${event.title}
-🕐 Time: ${_formatDateTime(event.startTime)} - ${_formatDateTime(event.endTime)}
-📍 Location: ${event.location}
+          📅 Event: ${event.title}
+          🕐 Time: ${_formatDateTime(event.startTime)} - ${_formatDateTime(event.endTime)}
+          📍 Location: ${event.location}
 
-Volunteers can scan this QR code to check in for the event.
+          Volunteers can scan this QR code to check in for the event.
 
-#VolunteerWork #EventCheckIn
+          #VolunteerWork #EventCheckIn
         ''',
         subject: 'Check-in QR Code for ${event.title}',
       );
@@ -53,6 +71,7 @@ Volunteers can scan this QR code to check in for the event.
         await file.delete();
       }
     } catch (e) {
+      debugPrint('Error sharing QR code: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error sharing QR code: $e'),

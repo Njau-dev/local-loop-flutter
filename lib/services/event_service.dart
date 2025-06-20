@@ -297,36 +297,28 @@ class EventService {
   }
 
   // Get joined volunteers for an event
-  Stream<List<UserModel>> getJoinedVolunteers(String eventId) {
-    return _firestore
-        .collection('events')
-        .doc(eventId)
-        .collection('joined_volunteers')
-        .snapshots()
-        .map((snapshot) async {
-          List<UserModel> volunteers = [];
+Stream<List<UserModel>> getJoinedVolunteers(String eventId) {
+    return _firestore.collection('events').doc(eventId)
+      .snapshots()
+      .asyncMap((
+      eventSnapshot,
+    ) async {
+      final data = eventSnapshot.data();
+      if (data == null || data['volunteerIds'] == null) return <UserModel>[];
 
-          for (var doc in snapshot.docs) {
-            final userId = doc.id;
-            try {
-              final userDoc =
-                  await _firestore.collection('users').doc(userId).get();
-              if (userDoc.exists) {
-                volunteers.add(
-                  UserModel.fromDocument(
-                    userDoc.id,
-                    userDoc.data() as Map<String, dynamic>,
-                  ),
-                );
-              }
-            } catch (e) {
-              print('Error fetching user $userId: $e');
-            }
-          }
+      final List volunteerIds = data['volunteerIds'];
+      if (volunteerIds.isEmpty) return <UserModel>[];
 
-          return volunteers;
-        })
-        .asyncMap((future) => future);
+      final usersSnapshot =
+          await _firestore
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: volunteerIds)
+              .get();
+
+      return usersSnapshot.docs
+          .map((doc) => UserModel.fromDocument(doc.id, doc.data()))
+          .toList();
+    });
   }
 
   Stream<List<EventModel>> getEventsByCreator(String creatorId) {

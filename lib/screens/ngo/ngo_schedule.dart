@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/rendering.dart';
 import 'package:local_loop/services/attendance_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -30,7 +31,6 @@ class _NgoScheduleState extends State<NgoSchedule> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GlobalKey qrKey = GlobalKey();
   bool _initialized = false;
-
  
   // Track events with dots
   Map<DateTime, bool> _eventDays = {};
@@ -104,12 +104,13 @@ class _NgoScheduleState extends State<NgoSchedule> {
   }
 
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: const Color(0xFF00664F), // Green primary color
+        backgroundColor: const Color(0xFF00664F),
         elevation: 0,
         automaticallyImplyLeading: false,
         toolbarHeight: 60,
@@ -118,7 +119,6 @@ class _NgoScheduleState extends State<NgoSchedule> {
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
-            fontWeight: FontWeight.w600,
           ),
         ),
         centerTitle: true,
@@ -918,11 +918,14 @@ class _NgoScheduleState extends State<NgoSchedule> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey[300]!),
                     ),
-                    child: QrImageView(
-                      data: qrData,
-                      version: QrVersions.auto,
-                      size: 200.0,
-                      foregroundColor: Colors.black,
+                    child: RepaintBoundary(
+                      key: qrKey,
+                      child: QrImageView(
+                        data: qrData,
+                        version: QrVersions.auto,
+                        size: 200.0,
+                        foregroundColor: Colors.black,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -936,7 +939,8 @@ class _NgoScheduleState extends State<NgoSchedule> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => _shareQRCode(event, qrData),
+                          onPressed:
+                              () => _shareQRCode(context, event, qrData, qrKey),
                           icon: const Icon(Icons.share),
                           label: const Text('Share'),
                         ),
@@ -1002,8 +1006,17 @@ class _NgoScheduleState extends State<NgoSchedule> {
   }
 
   // Updated QR sharing method using the service
-  void _shareQRCode(EventModel event, String qrData) async {
+  Future<void> _shareQRCode(
+    BuildContext context,
+    EventModel event,
+    String qrData,
+    GlobalKey qrKey,
+  ) async {
     try {
+      await Future.delayed(const Duration(milliseconds: 100));
+      RenderRepaintBoundary boundary =
+          qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      var image = await boundary.toImage(pixelRatio: 3.0);
       await QRShareService.shareQRCode(context, event, qrData, qrKey);
     } catch (e) {
       if (mounted) {
@@ -1068,10 +1081,10 @@ class _NgoScheduleState extends State<NgoSchedule> {
     // Handle navigation based on the tapped index
     switch (index) {
       case 0:
-        Navigator.pushReplacementNamed(context, '/ngo/home');
+        Navigator.pushReplacementNamed(context, '/ngo');
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/ngo/volunteers');
+        Navigator.pushReplacementNamed(context, '/ngo/events');
         break;
       case 2:
         // Already on the schedule screen
