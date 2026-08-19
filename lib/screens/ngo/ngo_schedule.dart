@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print, unused_field
 
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/rendering.dart';
@@ -939,8 +940,7 @@ class _NgoScheduleState extends State<NgoSchedule> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed:
-                              () => _shareQRCode(context, event, qrData, qrKey),
+                          onPressed: () => _shareQRCode(context, event, qrKey),
                           icon: const Icon(Icons.share),
                           label: const Text('Share'),
                         ),
@@ -967,6 +967,7 @@ class _NgoScheduleState extends State<NgoSchedule> {
           ),
     );
   }
+
 
   // Updated method to navigate to event details
   void _viewEventDetails(EventModel event) {
@@ -1005,19 +1006,27 @@ class _NgoScheduleState extends State<NgoSchedule> {
     );
   }
 
-  // Updated QR sharing method using the service
+  // Updated QR sharing method using the platform-specific service
   Future<void> _shareQRCode(
     BuildContext context,
     EventModel event,
-    String qrData,
     GlobalKey qrKey,
   ) async {
     try {
+      // Small delay to ensure the widget is rendered
       await Future.delayed(const Duration(milliseconds: 100));
-      RenderRepaintBoundary boundary =
+
+      // Capture the QR widget as an image
+      final boundary =
           qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      var image = await boundary.toImage(pixelRatio: 3.0);
-      await QRShareService.shareQRCode(context, event, qrData, qrKey);
+      final image = await boundary.toImage(pixelRatio: 3.0);
+
+      // Convert the image to PNG bytes
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final pngBytes = byteData!.buffer.asUint8List();
+
+      // Call the platform-specific share service
+      await QRShareService.shareQRCode(context, event, pngBytes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1029,6 +1038,7 @@ class _NgoScheduleState extends State<NgoSchedule> {
       }
     }
   }
+
 
   void _cancelEvent(EventModel event) async {
     final confirmed = await showDialog<bool>(
